@@ -110,4 +110,20 @@ nonisolated struct NotebookPackage: Sendable {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         return try PKDrawing(data: Data(contentsOf: url))
     }
+
+    /// Copies a drawing file that could not be read to `<id>.drawing.unreadable` (or
+    /// `-2`, `-3`, ... if that exists), so overwriting the page's ink never destroys the only
+    /// copy of data that might still be recoverable by hand. Does nothing if there is no file.
+    func preserveUnreadableDrawing(for pageID: UUID) throws {
+        let fileManager = FileManager.default
+        let source = drawingURL(for: pageID)
+        guard fileManager.fileExists(atPath: source.path) else { return }
+        var copy = drawingsURL.appending(path: "\(pageID.uuidString).drawing.unreadable")
+        var number = 2
+        while fileManager.fileExists(atPath: copy.path) {
+            copy = drawingsURL.appending(path: "\(pageID.uuidString).drawing.unreadable-\(number)")
+            number += 1
+        }
+        try fileManager.copyItem(at: source, to: copy)
+    }
 }

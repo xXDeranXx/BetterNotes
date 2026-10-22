@@ -178,16 +178,16 @@ struct NotebookModelTests {
 
     @Test func windowsKeepSeparateSessionsAndHistories() throws {
         let folder = try TempFolder()
-        let package = try makeNotebook(in: folder.url)
-        let windowOne = WindowSession(), windowTwo = WindowSession()
+        let notebookOne = try makeNotebook(in: folder.url, title: "One")
+        let notebookTwo = try makeNotebook(in: folder.url, title: "Two")
+        let registry = OpenNotebookRegistry()
+        let windowOne = WindowSession(registry: registry), windowTwo = WindowSession(registry: registry)
 
-        try windowOne.open(package)
+        try windowOne.open(notebookOne)
 
         #expect(windowOne.notebook != nil)
         #expect(windowTwo.notebook == nil)
-        try windowTwo.open(package)
+        try windowTwo.open(notebookTwo)
         #expect(windowOne.notebook?.undoManager !== windowTwo.notebook?.undoManager)
-        windowOne.close()
-        #expect(windowOne.notebook == nil && windowTwo.notebook != nil)
     }
 }

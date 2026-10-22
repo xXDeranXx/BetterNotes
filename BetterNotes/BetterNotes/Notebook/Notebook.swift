@@ -34,9 +34,25 @@ final class Notebook {
     /// Pages whose drawing changed since it was last written. Autosave (step 6) reads this.
     private(set) var dirtyPageIDs: Set<UUID> = []
 
+    /// Why the last save failed, for the banner in the editor; `nil` when everything is saved.
+    private(set) var saveError: String?
+
     /// Pages whose saved drawing file could not be read. Their drawing starts empty, but the
     /// file on disk must not be overwritten blindly: autosave keeps a copy first (step 6).
     @ObservationIgnored private(set) var unreadablePageIDs: Set<UUID> = []
+
+    /// How long after the last change autosave waits (SPEC: about 2 seconds).
+    @ObservationIgnored var autosaveDelay: Duration = .seconds(2)
+
+    /// Test seam: runs after a save has chosen what to write and before it writes. Tests use
+    /// it to change the notebook in the middle of a save. Always `nil` in the app.
+    @ObservationIgnored var saveHook: (@Sendable () async -> Void)?
+
+    /// Counts changes per page. A save only marks a page as saved if its count is still the
+    /// one the save wrote, so a stroke added during a save is never wrongly marked as saved.
+    @ObservationIgnored private var revisions: [UUID: Int] = [:]
+    @ObservationIgnored private var savingTask: Task<Void, Never>?
+    @ObservationIgnored private var autosaveTask: Task<Void, Never>?
 
     /// Called with a page id after that page's drawing changed (by drawing, undo or redo).
     /// A visible canvas listens here and shows the new drawing; a dropped canvas does not
@@ -101,6 +117,8 @@ final class Notebook {
         performUndoableChange(actionName) {
             drawings[pageID] = newDrawing
             dirtyPageIDs.insert(pageID)
+            revisions[pageID, default: 0] += 1
+            scheduleAutosave()
             // While undoing, UndoManager files this registration as the redo step.
             undoManager.registerUndo(withTarget: self) { notebook in
                 // UndoManager's handler is not marked as main-actor code, but it runs on
@@ -126,5 +144,86 @@ final class Notebook {
         change()
         undoManager.setActionName(actionName)
         undoManager.endUndoGrouping()
+    }
+
+    // MARK: Saving
+
+    /// Writes every changed page's drawing, then updates `meta.json`. Returns when everything
+    /// that was changed before the call has been written, or has failed (see `saveError`).
+    /// Saves run one after the other, never at the same time. Safe to call at any time.
+    func saveChanges() async {
+        autosaveTask?.cancel()
+        let previous = savingTask
+        let task = Task { [self] in
+            await previous?.value
+            await performSave()
+        }
+        savingTask = task
+        await task.value
+    }
+
+    /// Waits `autosaveDelay` after the last change, then saves. Every new change restarts the wait.
+    private func scheduleAutosave() {
+        autosaveTask?.cancel()
+        let delay = autosaveDelay
+        autosaveTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            await self.saveChanges()
+        }
+    }
+
+    private struct PageSnapshot: Sendable {
+        let pageID: UUID
+        let drawing: PKDrawing
+        let revision: Int
+        /// The file on disk could not be read: keep a copy before replacing it.
+        let preserveExistingFile: Bool
+    }
+
+    private func performSave() async {
+        let snapshots = dirtyPageIDs.map {
+            PageSnapshot(
+                pageID: $0, drawing: drawings[$0] ?? PKDrawing(), revision: revisions[$0] ?? 0,
+                preserveExistingFile: unreadablePageIDs.contains($0))
+        }
+        guard !snapshots.isEmpty else { return }
+        await saveHook?()
+
+        // The file work runs off the main thread so writing never stutters the pen.
+        let package = self.package
+        let result = await Task.detached { () -> (saved: [PageSnapshot], failure: String?) in
+            var saved: [PageSnapshot] = []
+            var failure: String?
+            for snapshot in snapshots {
+                do {
+                    if snapshot.preserveExistingFile {
+                        try package.preserveUnreadableDrawing(for: snapshot.pageID)
+                    }
+                    try package.saveDrawing(snapshot.drawing, for: snapshot.pageID)
+                    saved.append(snapshot)
+                } catch {
+                    failure = error.localizedDescription  // keep going: other pages may still save
+                }
+            }
+            return (saved, failure)
+        }.value
+
+        var failure = result.failure
+        for snapshot in result.saved {
+            unreadablePageIDs.remove(snapshot.pageID)  // its old file is now safely copied aside
+            if revisions[snapshot.pageID] == snapshot.revision {
+                dirtyPageIDs.remove(snapshot.pageID)
+            }
+        }
+        if !result.saved.isEmpty {
+            meta.updatedAt = .now
+            do {
+                try package.writeMeta(meta)
+            } catch {
+                failure = failure ?? error.localizedDescription
+            }
+        }
+        saveError = failure
     }
 }

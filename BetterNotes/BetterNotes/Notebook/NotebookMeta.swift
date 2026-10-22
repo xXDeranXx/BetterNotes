@@ -95,6 +95,7 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
     case unsupportedFormatVersion(Int)
     case cannotGenerateTemplate(PageTemplate)
     case pdfCreationFailed
+    case alreadyOpen
 
     var errorDescription: String? {
         switch self {
@@ -104,6 +105,8 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
             "Pages of type \"\(template.rawValue)\" cannot be generated; they come from an imported PDF."
         case .pdfCreationFailed:
             "The page template PDF could not be created."
+        case .alreadyOpen:
+            "This notebook is already open in another window. Close it there first."
         }
     }
 }
