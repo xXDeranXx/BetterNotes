@@ -26,12 +26,27 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     static let maxRenderScale: CGFloat = 6
 
     /// How many times larger than the page the canvas should render: the zoom, rounded up to
-    /// a whole number so a pinch does not re-render on every frame. Never below 1.
-    static func renderScale(zoom: CGFloat) -> CGFloat {
-        min(max(1, zoom.rounded(.up)), maxRenderScale)
+    /// a whole number so a pinch does not re-render on every frame. Never below 1 and never
+    /// above `cap`.
+    static func renderScale(zoom: CGFloat, cap: CGFloat = maxRenderScale) -> CGFloat {
+        min(max(1, zoom.rounded(.up)), cap)
+    }
+
+    /// Ink resolution is the heaviest thing the app does, so it is also what we give up when
+    /// the iPad reports that it is getting hot (`ProcessInfo.thermalState`). Sharpness returns
+    /// by itself when the iPad has cooled down.
+    static func renderScaleCap(for thermalState: ProcessInfo.ThermalState) -> CGFloat {
+        switch thermalState {
+        case .nominal, .fair: maxRenderScale
+        case .serious: 2
+        case .critical: 1
+        @unknown default: 2
+        }
     }
 
     private var zoom: CGFloat = 1
+    private(set) var thermalState: ProcessInfo.ThermalState
+    private var thermalObserver: NSObjectProtocol?
 
     /// True while we copy a drawing between model and canvas. PencilKit calls the delegate,
     /// synchronously, when code assigns `canvas.drawing` (checked in the simulator). Without
@@ -39,9 +54,17 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     /// history.
     private var isSyncing = false
 
-    init(notebook: Notebook) {
+    init(notebook: Notebook, thermalState: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState) {
         self.notebook = notebook
+        self.thermalState = thermalState
         super.init()
+        thermalObserver = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.thermalStateDidChange(to: ProcessInfo.processInfo.thermalState)
+            }
+        }
         // One closure for the whole notebook. It looks up the canvas by page id.
         notebook.onDrawingChange = { [weak self] pageID in self?.modelDrawingChanged(pageID) }
     }
@@ -62,7 +85,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         guard let pageID = pageID(for: page) else { return nil }
         let overlay = PageOverlayView(pageID: pageID)
         overlay.canvas.delegate = self
-        overlay.renderScale = Self.renderScale(zoom: zoom)
+        overlay.renderScale = currentRenderScale
         return overlay
     }
 
@@ -76,6 +99,20 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         overlayDidDisappear(overlay)
     }
 
+    isolated deinit {
+        if let thermalObserver { NotificationCenter.default.removeObserver(thermalObserver) }
+    }
+
+    // MARK: Heat
+
+    /// Called when the iPad's thermal state changes: lowers or restores the ink resolution of
+    /// the visible canvases. Pages that scroll in later pick up the current state too.
+    func thermalStateDidChange(to newState: ProcessInfo.ThermalState) {
+        guard newState != thermalState else { return }
+        thermalState = newState
+        visibleOverlays.values.forEach(applyRenderScale)
+    }
+
     // MARK: Zoom
 
     /// Called by the editor whenever the PDFView's zoom changes.
@@ -85,8 +122,12 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         visibleOverlays.values.forEach(applyRenderScale)
     }
 
+    private var currentRenderScale: CGFloat {
+        Self.renderScale(zoom: zoom, cap: Self.renderScaleCap(for: thermalState))
+    }
+
     private func applyRenderScale(to overlay: PageOverlayView) {
-        overlay.renderScale = Self.renderScale(zoom: zoom)
+        overlay.renderScale = currentRenderScale
     }
 
     // MARK: Showing and hiding

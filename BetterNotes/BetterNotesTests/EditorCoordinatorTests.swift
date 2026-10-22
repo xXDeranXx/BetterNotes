@@ -200,4 +200,57 @@ struct EditorCoordinatorTests {
         #expect(overlay.canvas.drawing.strokes.count == 1)
         #expect(spy.zoomScales == [3])  // assigned once, and already at the final zoom
     }
+
+    @Test func inkResolutionIsLoweredWhenTheIPadGetsHotAndRestoredWhenItCools() throws {
+        let setup = try makeSetup()
+        setup.coordinator.zoomDidChange(to: 5)
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.frame = CGRect(x: 0, y: 0, width: 595, height: 842)
+        setup.coordinator.overlayDidAppear(overlay)
+        #expect(overlay.renderScale == 5)
+
+        setup.coordinator.thermalStateDidChange(to: .fair)  // warm is fine
+        #expect(overlay.renderScale == 5)
+        setup.coordinator.thermalStateDidChange(to: .serious)
+        #expect(overlay.renderScale == 2)
+        setup.coordinator.thermalStateDidChange(to: .critical)
+        #expect(overlay.renderScale == 1)
+        setup.coordinator.thermalStateDidChange(to: .nominal)
+        #expect(overlay.renderScale == 5)
+    }
+
+    @Test func aPageThatScrollsInWhileHotStartsAtTheLoweredResolution() throws {
+        let setup = try makeSetup()
+        setup.coordinator.zoomDidChange(to: 4)
+        setup.coordinator.thermalStateDidChange(to: .serious)
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.frame = CGRect(x: 0, y: 0, width: 595, height: 842)
+
+        setup.coordinator.overlayDidAppear(overlay)
+
+        #expect(overlay.renderScale == 2)
+        #expect(overlay.canvas.zoomScale == 2)
+    }
+
+    @Test func aHotIPadStartsTheEditorAtTheLoweredResolution() throws {
+        let setup = try makeSetup()
+        let hotCoordinator = EditorCoordinator(notebook: setup.notebook, thermalState: .critical)
+        hotCoordinator.zoomDidChange(to: 3)
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.frame = CGRect(x: 0, y: 0, width: 595, height: 842)
+
+        hotCoordinator.overlayDidAppear(overlay)
+
+        #expect(overlay.renderScale == 1)
+    }
+
+    @Test func theResolutionCapFollowsTheThermalState() {
+        #expect(EditorCoordinator.renderScaleCap(for: .nominal) == EditorCoordinator.maxRenderScale)
+        #expect(EditorCoordinator.renderScaleCap(for: .fair) == EditorCoordinator.maxRenderScale)
+        #expect(EditorCoordinator.renderScaleCap(for: .serious) == 2)
+        #expect(EditorCoordinator.renderScaleCap(for: .critical) == 1)
+        // The cap never raises the scale above what the zoom needs, and never goes below 1.
+        #expect(EditorCoordinator.renderScale(zoom: 1.2, cap: 2) == 2)
+        #expect(EditorCoordinator.renderScale(zoom: 0.4, cap: 1) == 1)
+    }
 }
