@@ -92,3 +92,66 @@ struct PageRendererTests {
         #expect(pixels.isWhite(10, 10))  // the page itself stays white
     }
 }
+
+/// Rotated pages (PDF `/Rotate`): PDFKit turns the page overlay together with the page, so
+/// ink is stored in the *unrotated* page space and must be turned the same way when rendered.
+struct PageRendererRotationTests {
+    /// A 595 x 842 PDF page with a black square at the top-left of its unrotated content,
+    /// turned by `rotation` degrees.
+    private func rotatedPage(_ rotation: Int, folder: TempFolder) throws -> PDFPage {
+        let source = try makeSamplePDF(in: folder.url, pageCount: 1)
+        let document = try #require(PDFDocument(url: source))
+        try #require(document.page(at: 0)).rotation = rotation
+        let url = folder.url.appending(path: "rotated-\(rotation).pdf")
+        #expect(document.write(to: url))
+        return try #require(PDFDocument(url: url)?.page(at: 0))
+    }
+
+    /// Where the unrotated point (x, y) of a 595 x 842 page ends up after turning clockwise.
+    private func displayed(_ x: Int, _ y: Int, rotation: Int) -> (x: Int, y: Int) {
+        switch rotation {
+        case 90: (842 - y, x)
+        case 180: (595 - x, 842 - y)
+        case 270: (y, 595 - x)
+        default: (x, y)
+        }
+    }
+
+    @Test(arguments: [0, 90, 180, 270])
+    func theImageHasTheDisplayedSize(rotation: Int) throws {
+        let folder = try TempFolder()
+        let image = PageRenderer.render(
+            page: try rotatedPage(rotation, folder: folder), drawing: PKDrawing(), scale: 1)
+
+        let pixels = PixelReader(image)
+        let turned = rotation % 180 != 0
+        #expect(pixels.width == (turned ? 842 : 595) && pixels.height == (turned ? 595 : 842))
+    }
+
+    @Test(arguments: [0, 90, 180, 270])
+    func thePDFContentIsTurnedWithThePage(rotation: Int) throws {
+        let folder = try TempFolder()
+        let image = PageRenderer.render(
+            page: try rotatedPage(rotation, folder: folder), drawing: PKDrawing(), scale: 1)
+
+        let pixels = PixelReader(image)
+        let square = displayed(50, 50, rotation: rotation)  // the middle of the black square
+        #expect(pixels.isDark(square.x, square.y))
+    }
+
+    @Test(arguments: [0, 90, 180, 270])
+    func inkTurnsWithThePageAndStaysOnTheSameContent(rotation: Int) throws {
+        // A stroke in unrotated page coordinates, right of the black square. After turning,
+        // it must still be right of the square, wherever the square went.
+        let folder = try TempFolder()
+        let drawing = lineDrawing(from: CGPoint(x: 150, y: 50), to: CGPoint(x: 250, y: 50))
+        let image = PageRenderer.render(
+            page: try rotatedPage(rotation, folder: folder), drawing: drawing, scale: 1)
+
+        let pixels = PixelReader(image)
+        let onInk = displayed(200, 50, rotation: rotation)
+        let wherePlainInkWouldBe = displayed(50, 200, rotation: rotation)  // a point the ink must not reach
+        #expect(pixels.isDark(onInk.x, onInk.y))
+        #expect(pixels.isWhite(wherePlainInkWouldBe.x, wherePlainInkWouldBe.y))
+    }
+}
