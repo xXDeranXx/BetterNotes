@@ -24,10 +24,12 @@ final class NotebookEditorViewController: UIViewController {
     private let notebook: Notebook
     private let coordinator: EditorCoordinator
     private let pdfView = PDFView()
+    private let search: DocumentSearch
     private var didSetZoomLimits = false
 
-    init(notebook: Notebook) {
+    init(notebook: Notebook, search: DocumentSearch) {
         self.notebook = notebook
+        self.search = search
         self.coordinator = EditorCoordinator(notebook: notebook)
         super.init(nibName: nil, bundle: nil)
     }
@@ -62,6 +64,7 @@ final class NotebookEditorViewController: UIViewController {
         pdfView.pageOverlayViewProvider = coordinator
         pdfView.document = document
         view.addSubview(pdfView)
+        search.pdfView = pdfView
 
         // Keep ink sharp: tell the coordinator about every zoom change (see EditorCoordinator).
         NotificationCenter.default.addObserver(
