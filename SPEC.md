@@ -88,6 +88,7 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 ## Version 1 features
 
 ### 1. Writing
+- **Goodnotes-style tools and customization** (Milestone 7a): a custom toolbar with several editable pens (fountain, ballpoint, brush-like, pencil), highlighter/marker, eraser, lasso, ruler, and shape tool; each pen has its own saved color and width, a row of favorite colors, a stroke preview, and the toolbar can be moved and collapsed. Built on PencilKit's `PKInkingTool` types; what PencilKit cannot do (for example custom brush textures) is listed in the milestone instead of faked.
 - PencilKit ink with the system tool picker: pen, marker, pencil, eraser (stroke and pixel), lasso (move, resize, copy, paste, delete), ruler, colors and widths.
 - **The Pencil writes, fingers scroll and zoom** (`drawingPolicy = .pencilOnly`). A setting allows finger drawing.
 - **Undo and redo** for strokes, objects **and** page operations in one history per notebook window. Two-finger tap = undo, three-finger tap = redo (configurable).
@@ -150,7 +151,7 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 - **Links** between pages and notebooks.
 - Horizontal page-by-page scrolling as an option.
 - More templates (Cornell notes, music staves) and custom templates from a PDF.
-- A custom favorites toolbar instead of the system tool picker.
+- (A custom pen toolbar is now Milestone 7a.)
 - Presentation mode with a laser pointer.
 
 ## Out of scope
@@ -196,6 +197,8 @@ Decided:
 - **M4, move or copy to another notebook (`PageTransfer`):** checks first, then adds copies (new ids, ink included, also unsaved ink) at the end of the target and **saves and confirms** that, and only then removes the pages from the source for a move. Refused: the same notebook, a target open in another window (it would overwrite the change), moving every page, a target whose list and PDF disagree, a target that cannot be saved (the source stays untouched; tested with a mutation that deletes first). Undoing a move brings the pages back into the source; the copies in the target stay (a duplicate, never a loss).
 - **Milestone 4 done (2026-10-23).** 173 unit tests pass (about 14 s) on the iPad Air 11-inch (M2) simulator. **Confirmed on the developer's iPad:** the sidebar, the grid, drag to reorder in both, the plus menu (templates and inserts), Change Template, and rotating a page without any jump. Everything else was checked with unit tests, a real-`PDFView` test and simulator screenshots. **Not yet confirmed on the iPad:** the Photos picker, move or copy to another notebook, and the whole flow "reorder pages with ink, undo, redo, force-quit, reopen"; and the save time after a page operation on an image-heavy PDF (about 30 ms on a generated 300-page text PDF). Known limits: the page-list undo history is not saved (after a restart "undo" cannot bring back a deleted page; its ink file is still in `drawings/`); orphaned drawing files of deleted pages are kept (cleaning up is a later, never automatic, tidy-up); inserting a whole PDF always inserts all of its pages (no page picker); no horizontal page-by-page mode yet (under "Later").
 - **M4 polish after the first iPad test (2026-10-22/23):** the plus (sidebar and grid) opens a menu on tap: new page with Blank, Lined, Grid or Dotted at the end, and Insert (PDF, photo, image from Files); there is no add-page or insert button in the top bar, the grid button sits at the left next to the sidebar toggle, and the sidebar slides in and out. Pages can be dragged to reorder in the sidebar too (same `PageReorder` rule as the grid). Long-press on a page made from a template shows **Change Template** (not for imported PDF pages): `Notebook.changeTemplate` swaps the PDF page for a freshly generated one, keeping id, ink, displayed size and rotation, as one undo step; thumbnail key and cache file name now contain the template. Rotation preview: every thumbnail sits in a **fixed slot shaped like the page before its own rotation**, so turning a page changes no layout at all (a cell that changed shape was laid out at its new size at once while the picture animated, which made it jump up and back down; checked with a UI test that the neighbouring button does not move). Inside the slot the old picture is only scaled and rotated (never resized) and the sharp new picture replaces it after the 0.3 s turn, because replacing it earlier snapped the angle back mid-turn. A page turned sideways is therefore shown smaller, centred in its slot. Found with a screenshot: after turning a page sideways the editor kept the old fit-to-width zoom and the page ran off the screen, so `NotebookEditorViewController` fits again when a page operation changes the fit scale (and keeps the user's zoom otherwise). Animations themselves cannot be seen in simulator screenshots; judge them on the iPad.
+- **M4, confirmed on the iPad (2026-10-23):** the Photos picker, move or copy to another notebook, the flow "reorder pages with ink, undo, redo, force-quit, reopen", ink sharpness after the zoomScale fix, and a real rotated PDF all work. **Heat is still unverified** (not enough use yet); keep the thermal safeguard and measure during normal use.
+- **M5, library (foundation and UI built, 2026-10-23; iPad check pending):** `LibraryScanner` reads folders and notebooks (a notebook with a damaged `meta.json` is listed with a problem message and never hides the others); `LibraryOperations` does create folder, rename (title in `meta.json` and the `.inkbook` name), move, duplicate, cover color and trash. Name clashes get a number **in brackets**, "Name (2).inkbook" (also for new notebooks and imports). Nothing open in a window can be moved, renamed or trashed (`OpenNotebookRegistry.isOpen(at:)`, also for a folder that contains an open notebook). The trash keeps each item in `.Trash/<uuid>/` with an `origin.json` so "Put Back" returns it to its folder (or the root); items older than 30 days are purged on launch. `.library.json` holds favorites, recents (max 10) and the sort choice by notebook **id**, so a notebook moved in the Files app stays a favorite; a broken file falls back to defaults and is kept as `.library.json.unreadable`. UI, styled after Goodnotes: sidebar (Documents, Favorites, Recents, Trash), tile grid with first-page covers (`CoverStore`, cached in `thumbnails/cover.jpg`) and a colored spine, tap a folder to open it with a breadcrumb bar, search across all folders, sort menu, long-press menu (rename, duplicate, move to, favorite, cover color, trash), drag onto a folder or breadcrumb, "Move to..." picker, rescan when the app becomes active. The consistency check on open already existed (`Notebook.structureProblem`: read-only with a message). Not yet checked on the iPad: drag onto folders, trash and put back, moving a notebook in the Files app while the app is in the background, covers of imported PDFs.
 - (results of later decisions and spikes go here)
 
 ## Milestones
@@ -242,12 +245,23 @@ Build: flattened PDF export (all or selected pages, through the page renderer), 
 Tests: an exported PDF has the same page count and sizes; pages without ink are unchanged.
 Check yourself: export a notebook into your Obsidian vault and open it in Obsidian; make a library backup, unzip it in the Files app, import it into a fresh install (on a second test bundle id).
 
+### Milestone 7a: Pen toolbar and customization (added 2026-10-23)
+Goal: write like in Goodnotes. Replaces the system `PKToolPicker` with an own toolbar.
+Build, in this order:
+1. **Spike (small):** can the custom toolbar drive `PKCanvasView.tool` on every visible canvas, and does the Pencil Pro squeeze and double tap still work without `PKToolPicker`? Squeeze and double tap come through `UIPencilInteraction`, so this should work; report what does not. Keep the system picker available as a setting until the toolbar is trusted.
+2. Tools: pens (fountain, ballpoint, brush-like using `PKInkingTool.InkType` `.pen`, `.monoline`, `.fountainPen`, `.watercolor`, `.crayon`), pencil, marker/highlighter, eraser (stroke and pixel), lasso, ruler. Each tool remembers its own color and width.
+3. Customization: favorite colors row and a color picker, width slider with live preview, add or remove pens on the toolbar, reorder them, move the toolbar to the top or side, collapse it. Settings saved in `UserDefaults` (they belong to the device, not to a notebook).
+4. Gestures pulled forward from M7: two-finger tap = undo, three-finger tap = redo (configurable), finger-drawing setting.
+Tests: tool settings encode/decode and migrate; each tool builds the right `PKTool` (type, color, width); the stored favorite colors survive a restart. Appearance and feel are checked on the iPad.
+Heat: the toolbar adds no rendering work; if a tool (for example watercolor) makes the iPad warm, report it and make it optional.
+Check yourself: switch pens and colors without lifting your hand; squeeze and double tap work; the toolbar looks like what you want from Goodnotes.
+
 ### Milestone 7: Tools and Pencil Pro
 Build, in this order:
 1. Read the spike result from milestone 2 under "Decided" (live variant or fallback). If it is missing, do the spike first and decide together with the developer before building the rest.
 2. Shape classification (line, rectangle, ellipse, triangle) as pure, tested logic.
 3. The live preview in the overlay's preview layer that follows the Pencil until lift, and the final `PKStroke` with undo through the model (or the fallback variant).
-4. Squeeze and double-tap handling, gesture settings (two/three-finger tap), finger-drawing setting, shape-recognition setting.
+4. Squeeze and double-tap handling and the shape-recognition setting (the two/three-finger tap gestures and the finger-drawing setting moved to Milestone 7a).
 Tests: classification with recorded stroke points (line, rectangle, ellipse, triangle; a shaky line still counts; a normal word or letter is never classified as a shape); hold detection (a slow stroke is not a hold; a hold under 0.5 s does nothing); the built `PKStroke` has the source stroke's ink type, color and width.
 You should be able to explain: how gesture recognizers run at the same time, how the shape's points are converted between view and page coordinates.
 Check yourself: draw straight lines, a table and a diagram for a lecture by holding; lengthen and rotate a line before lifting; zoomed in and out; undo each shape; erase part of a shape.
@@ -255,6 +269,9 @@ Check yourself: draw straight lines, a table and a diagram for a lecture by hold
 ### Milestone 8: Images and text boxes
 Build: insert images (Photos, Files, clipboard), text boxes, move/resize/delete, all in the overlay's objects layer; drawing objects in the page renderer (so exports and thumbnails show them without further changes); undo through the model.
 Check yourself: paste a screenshot of a slide into a notebook, annotate it with ink, export it.
+
+### Order of work (reviewed 2026-10-23)
+M5 (library) -> M6 (export and backup) -> M7a (pen toolbar) -> M7 (shapes and Pencil Pro) -> M8 (images and text boxes) -> design discussion for **tabs** (see "Later": it changes `WindowSession`, and M9's "bring window forward" depends on it, so decide both together) -> M9 (polish). Before M6, do one short test session on the iPad for the items still marked "not confirmed" (heat, eviction on a long notebook, save time on image-heavy PDFs).
 
 ### Milestone 9: Daily-use polish
 Build: polish for multiple windows and Split View (enabled since milestone 1): opening a notebook that is already open brings its window forward, drag and drop between windows; dark mode, empty and error states, layout checks in both orientations.
