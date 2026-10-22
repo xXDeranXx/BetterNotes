@@ -166,7 +166,12 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 4. **M6, export method**: (a) a `PDFAnnotation` subclass that draws each page's ink, written with `PDFDocument.write`, or (b) re-render every page with `UIGraphicsPDFRenderer`: the PDF page as vector, the ink as an image at 3× scale or more. Decide after testing both with a real lecture PDF (quality, file size, how it looks in Obsidian).
 
 Decided:
-- (nothing yet; results of decisions and spikes go here)
+- **M1, app language:** English only (no localization).
+- **M1, minimum iPadOS:** 27.0 (the developer's iPad runs iPadOS 27; this is also Xcode 27's default target).
+- **M1, Swift language mode:** Swift 6 (`SWIFT_VERSION = 6.0`). The project uses Xcode's default main-actor isolation, so file and model code that must run off the main thread is marked `nonisolated`.
+- **M1, Info.plist:** a real `BetterNotes/Info.plist` (next to the `.xcodeproj`, outside the synchronized source folder) is merged with the generated one. It declares Files-app sharing, the `com.anvu.BetterNotes.inkbook` package type and PDF document types. Multiple windows are enabled with the build setting `INFOPLIST_KEY_UIApplicationSupportsMultipleScenes`.
+- **M1, command line builds:** `xcode-select` points at the Command Line Tools, so use `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild ...`.
+- (results of later decisions and spikes go here)
 
 ## Milestones
 Each milestone ends with: the app running on the developer's iPad, tests passing, and a git commit.
