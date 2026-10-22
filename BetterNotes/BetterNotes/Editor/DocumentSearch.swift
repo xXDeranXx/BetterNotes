@@ -72,6 +72,9 @@ final class DocumentSearch {
         for (index, match) in matches.enumerated() {
             match.color = index == currentIndex ? Self.currentColor : Self.matchColor
         }
+        // The selections are the same objects as before, only their colors changed, and
+        // PDFView does not redraw for that. Clearing first makes it take them as new.
+        pdfView?.highlightedSelections = nil
         pdfView?.highlightedSelections = matches
         if matches.indices.contains(currentIndex) {
             pdfView?.go(to: matches[currentIndex])
