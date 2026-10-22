@@ -15,5 +15,19 @@ struct RootView: View {
             }
         }
         .environment(session)
+        // "Open in BetterNotes" from the share sheet or the Files app arrives here as a URL.
+        // Like a route change in a React app: the system hands the window a URL and the
+        // window decides what to show.
+        .onOpenURL { url in
+            Task { await session.importPDFs([url]) }
+        }
+        .alert(
+            "Could not import", isPresented: Binding(
+                get: { session.importError != nil }, set: { if !$0 { session.importError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(session.importError ?? "")
+        }
     }
 }

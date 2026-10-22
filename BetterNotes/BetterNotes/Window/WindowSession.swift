@@ -35,6 +35,38 @@ final class WindowSession {
         }
     }
 
+    /// Set when an import failed; the window shows it in an alert and clears it.
+    var importError: String?
+
+    /// Imports PDFs as new notebooks and opens the last one that worked. Failures are
+    /// collected in `importError` (one bad file does not stop the others). If a notebook is
+    /// open in this window it is saved and closed first; if that fails, the new notebook is
+    /// still imported and sits in the library.
+    func importPDFs(_ urls: [URL]) async {
+        var imported: NotebookPackage?
+        var failures: [String] = []
+        for url in urls where PDFImporter.isPDF(url) {
+            do {
+                imported = try await PDFImporter.importPDF(at: url)
+            } catch {
+                failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        if !failures.isEmpty { importError = failures.joined(separator: "\n") }
+        guard let imported else { return }
+
+        if notebook != nil { await close() }
+        guard notebook == nil else {
+            importError = "The PDF was imported, but the open notebook could not be saved and closed, so it was not opened. Find it in the library."
+            return
+        }
+        do {
+            try open(imported)
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
     /// Saves everything, then closes. If saving fails the notebook stays open (its
     /// `saveError` explains why), because closing would throw away the unsaved ink.
     func close() async {
