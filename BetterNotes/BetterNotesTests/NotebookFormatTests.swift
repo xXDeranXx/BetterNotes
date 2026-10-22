@@ -99,10 +99,12 @@ struct TemplateGeneratorTests {
 
         let document = try #require(PDFDocument(data: try TemplateGenerator.makePDF(for: pages)))
 
-        let boxes = (0..<2).compactMap { document.page(at: $0)?.bounds(for: .mediaBox) }
-        #expect(boxes.map(\.width) == [format.portrait.width, format.portrait.height])
-        #expect(boxes.map(\.height) == [format.portrait.height, format.portrait.width])
-        #expect(format.portrait.height > format.portrait.width)
+        let width = format.portrait.width, height = format.portrait.height
+        let portraitBox = try #require(document.page(at: 0)).bounds(for: .mediaBox)
+        let landscapeBox = try #require(document.page(at: 1)).bounds(for: .mediaBox)
+        #expect(portraitBox.size == CGSize(width: width, height: height))
+        #expect(landscapeBox.size == CGSize(width: height, height: width))
+        #expect(height > width)
     }
 
     @Test func mixedPagesKeepOrderAndSizes() throws {
