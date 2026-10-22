@@ -11,8 +11,39 @@ nonisolated struct PageSize: Codable, Equatable, Sendable {
     var width: Double
     var height: Double
 
-    static let a4Portrait = PageSize(width: 595, height: 842)
-    static let a4Landscape = PageSize(width: 842, height: 595)
+    static let a4Portrait = PaperFormat.a4.portrait
+    static let a4Landscape = PaperFormat.a4.portrait.landscape
+
+    /// The same size turned on its side.
+    var landscape: PageSize { PageSize(width: height, height: width) }
+}
+
+/// Standard paper formats offered when creating a notebook (portrait size in points).
+/// Any other size also works: the generator and the export only need a width and height.
+nonisolated enum PaperFormat: String, CaseIterable, Identifiable, Sendable {
+    case a5, a4, a3, b5, letter
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .a5: "A5"
+        case .a4: "A4"
+        case .a3: "A3"
+        case .b5: "B5"
+        case .letter: "US Letter"
+        }
+    }
+
+    var portrait: PageSize {
+        switch self {
+        case .a5: PageSize(width: 420, height: 595)
+        case .a4: PageSize(width: 595, height: 842)
+        case .a3: PageSize(width: 842, height: 1191)
+        case .b5: PageSize(width: 499, height: 709)
+        case .letter: PageSize(width: 612, height: 792)
+        }
+    }
 }
 
 /// One entry in `meta.json`'s `pages` list. The list has the same order as the pages

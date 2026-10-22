@@ -90,6 +90,21 @@ struct TemplateGeneratorTests {
         #expect(box.width == size.width && box.height == size.height)
     }
 
+    @Test(arguments: PaperFormat.allCases)
+    func everyPaperFormatWorksInBothOrientations(format: PaperFormat) throws {
+        let pages = [
+            PageMeta(template: .lined, size: format.portrait),
+            PageMeta(template: .grid, size: format.portrait.landscape),
+        ]
+
+        let document = try #require(PDFDocument(data: try TemplateGenerator.makePDF(for: pages)))
+
+        let boxes = (0..<2).compactMap { document.page(at: $0)?.bounds(for: .mediaBox) }
+        #expect(boxes.map(\.width) == [format.portrait.width, format.portrait.height])
+        #expect(boxes.map(\.height) == [format.portrait.height, format.portrait.width])
+        #expect(format.portrait.height > format.portrait.width)
+    }
+
     @Test func mixedPagesKeepOrderAndSizes() throws {
         let pages = [
             PageMeta(template: .lined, size: .a4Portrait),
