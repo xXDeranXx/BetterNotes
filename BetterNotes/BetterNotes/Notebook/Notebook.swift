@@ -78,7 +78,12 @@ final class Notebook {
 
     /// Counts changes per page. A save only marks a page as saved if its count is still the
     /// one the save wrote, so a stroke added during a save is never wrongly marked as saved.
-    @ObservationIgnored private var revisions: [UUID: Int] = [:]
+    /// Observable on purpose: thumbnails read it to know when a page's picture is out of date.
+    private(set) var revisions: [UUID: Int] = [:]
+
+    /// Which pages are on screen right now; the editor sets this. Drawings of other pages that
+    /// are saved can be dropped from memory (see `evictOffscreenDrawings`).
+    @ObservationIgnored var visiblePageIDs: () -> Set<UUID> = { [] }
     @ObservationIgnored private var savingTask: Task<Void, Never>?
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
 
@@ -160,6 +165,10 @@ final class Notebook {
     /// once the write succeeded) and was read from disk without trouble (an unreadable file
     /// keeps its empty stand-in, see `unreadablePageIDs`). The next `drawing(for:)` simply
     /// loads it again.
+    func evictOffscreenDrawings() {
+        evictDrawings(keeping: visiblePageIDs())
+    }
+
     func evictDrawings(keeping visiblePageIDs: Set<UUID>) {
         let evictable = drawings.keys.filter {
             !visiblePageIDs.contains($0) && !dirtyPageIDs.contains($0) && !unreadablePageIDs.contains($0)

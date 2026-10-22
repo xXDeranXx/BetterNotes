@@ -6,9 +6,10 @@ import SwiftUI
 struct NotebookEditor: UIViewControllerRepresentable {
     let notebook: Notebook
     let search: DocumentSearch
+    let navigator: PageNavigator
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
-        NotebookEditorViewController(notebook: notebook, search: search)
+        NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
     }
 
     func updateUIViewController(_ controller: NotebookEditorViewController, context: Context) {}
@@ -21,10 +22,30 @@ struct EditorView: View {
     let notebook: Notebook
     @State private var search = DocumentSearch()
     @State private var isSearching = false
+    @State private var thumbnails: ThumbnailStore
+    @State private var navigator: PageNavigator
+    @State private var isSidebarVisible = true
+    @State private var pageError: String?
+
+    init(notebook: Notebook) {
+        self.notebook = notebook
+        _thumbnails = State(initialValue: ThumbnailStore(notebook: notebook))
+        _navigator = State(initialValue: PageNavigator(notebook: notebook))
+    }
+
+    private var actions: PageActions {
+        PageActions(notebook: notebook, navigator: navigator) { pageError = $0 }
+    }
 
     var body: some View {
         NavigationStack {
-            NotebookEditor(notebook: notebook, search: search)
+            HStack(spacing: 0) {
+                if isSidebarVisible {
+                    PageSidebar(notebook: notebook, thumbnails: thumbnails, navigator: navigator, actions: actions)
+                    Divider()
+                }
+                NotebookEditor(notebook: notebook, search: search, navigator: navigator)
+            }
                 .ignoresSafeArea(edges: .bottom)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
@@ -43,13 +64,22 @@ struct EditorView: View {
                     // Leaving the foreground (home, app switcher, locking): save right away.
                     if phase != .active { BackgroundSave.flush(notebook) }
                 }
+                .alert("Could not change the pages", isPresented: Binding(
+                    get: { pageError != nil }, set: { if !$0 { pageError = nil } })
+                ) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(pageError ?? "")
+                }
                 .navigationTitle(notebook.meta.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
+                    ToolbarItemGroup(placement: .topBarLeading) {
                         Button("Library", systemImage: "chevron.backward") { Task { await session.close() } }
+                        Button("Pages", systemImage: "sidebar.left") { isSidebarVisible.toggle() }
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button("Add Page", systemImage: "plus.square") { actions.addPageAtEnd() }
                         Button("Search", systemImage: "magnifyingglass") {
                             if isSearching { search.clear() }
                             isSearching.toggle()

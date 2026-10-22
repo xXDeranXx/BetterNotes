@@ -25,11 +25,13 @@ final class NotebookEditorViewController: UIViewController {
     private let coordinator: EditorCoordinator
     private let pdfView = PDFView()
     private let search: DocumentSearch
+    private let navigator: PageNavigator
     private var didSetZoomLimits = false
 
-    init(notebook: Notebook, search: DocumentSearch) {
+    init(notebook: Notebook, search: DocumentSearch, navigator: PageNavigator) {
         self.notebook = notebook
         self.search = search
+        self.navigator = navigator
         self.coordinator = EditorCoordinator(notebook: notebook)
         super.init(nibName: nil, bundle: nil)
     }
@@ -65,6 +67,7 @@ final class NotebookEditorViewController: UIViewController {
         pdfView.document = document
         view.addSubview(pdfView)
         search.pdfView = pdfView
+        navigator.attach(pdfView)
 
         // PDFView re-lays-out by itself when pages are added or removed, but not when a page
         // is turned; asking it to lay out again after every page operation covers both.

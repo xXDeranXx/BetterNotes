@@ -67,6 +67,9 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         }
         // One closure for the whole notebook. It looks up the canvas by page id.
         notebook.onDrawingChange = { [weak self] pageID in self?.modelDrawingChanged(pageID) }
+        notebook.visiblePageIDs = { [weak self] in
+            self.map { Set($0.visibleOverlays.keys) } ?? []
+        }
     }
 
     // MARK: Page → page id
@@ -149,10 +152,9 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         toolPicker.removeObserver(overlay.canvas)
         // SPEC, "Data safety": a changed page is also saved when its canvas leaves the screen.
         // Once that is done, drawings that are saved and off screen are dropped from memory.
-        Task { [weak self, notebook] in
+        Task { [notebook] in
             await notebook.saveChanges()
-            guard let self else { return }
-            notebook.evictDrawings(keeping: Set(visibleOverlays.keys))
+            notebook.evictOffscreenDrawings()
         }
     }
 
