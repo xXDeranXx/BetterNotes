@@ -16,6 +16,11 @@ nonisolated struct LibraryIndex: Codable, Equatable, Sendable {
     var sortKey: LibrarySortKey = .name
     var sortAscending = true
     var layout: LibraryLayout = .grid
+    /// When the last library backup was handed to the share sheet; `nil` = never.
+    var lastBackup: Date?
+
+    /// A backup older than this many days (or none at all) triggers the reminder.
+    static let backupReminderDays = 14
 
     init() {}
 
@@ -28,6 +33,12 @@ nonisolated struct LibraryIndex: Codable, Equatable, Sendable {
         sortKey = (try? container.decodeIfPresent(LibrarySortKey.self, forKey: .sortKey)) ?? .name
         sortAscending = (try? container.decodeIfPresent(Bool.self, forKey: .sortAscending)) ?? true
         layout = (try? container.decodeIfPresent(LibraryLayout.self, forKey: .layout)) ?? .grid
+        lastBackup = try? container.decodeIfPresent(Date.self, forKey: .lastBackup)
+    }
+
+    func isBackupDue(now: Date = .now) -> Bool {
+        guard let lastBackup else { return true }
+        return now.timeIntervalSince(lastBackup) > Double(Self.backupReminderDays) * 24 * 60 * 60
     }
 
     func isFavorite(_ id: UUID) -> Bool { favorites.contains(id) }

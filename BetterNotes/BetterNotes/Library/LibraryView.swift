@@ -21,6 +21,18 @@ struct LibraryView: View {
     @State private var dropTargetFolder: URL?
     @State private var isConfirmingEmptyTrash = false
     @State private var isTrashDropTargeted = false
+    @State private var exportNotebook: Notebook?
+    @State private var backupRequest: BackupRequest?
+    @State private var isPickingImportFolder = false
+    @State private var infoMessage: String?
+    @State private var isReminderDismissed = false
+
+    private struct BackupRequest: Identifiable {
+        let id = UUID()
+        let source: URL
+        let title: String
+        let isWholeLibrary: Bool
+    }
 
     private enum NamePrompt: Identifiable {
         case newFolder
@@ -62,6 +74,27 @@ struct LibraryView: View {
             case .success(let urls): Task { await session.importPDFs(urls); await model.reload() }
             case .failure(let error): model.errorMessage = error.localizedDescription
             }
+        }
+        .sheet(item: Binding(get: { exportNotebook.map(ExportItem.init) }, set: { if $0 == nil { exportNotebook = nil } })) { item in
+            ExportSheet(notebook: item.notebook) { exportNotebook = nil }
+        }
+        .sheet(item: $backupRequest) { request in
+            BackupSheet(
+                source: request.source, title: request.title, isWholeLibrary: request.isWholeLibrary,
+                lastBackup: model.index.lastBackup,
+                didBackUp: { if request.isWholeLibrary { model.recordBackup() } },
+                close: { backupRequest = nil })
+        }
+        .fileImporter(isPresented: $isPickingImportFolder, allowedContentTypes: [.folder]) { result in
+            switch result {
+            case .success(let url): Task { infoMessage = await model.importFolder(from: url) }
+            case .failure(let error): model.errorMessage = error.localizedDescription
+            }
+        }
+        .alert("Done", isPresented: Binding(get: { infoMessage != nil }, set: { if !$0 { infoMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(infoMessage ?? "")
         }
         .sheet(isPresented: $isCreatingNotebook) {
             NewNotebookSheet(
@@ -168,6 +201,7 @@ struct LibraryView: View {
         } else {
             VStack(spacing: 0) {
                 if model.section == .documents && !model.isSearching && !model.isAtRoot { breadcrumbBar }
+                if showsBackupReminder { backupReminder }
                 grid
             }
             .background(Color(.systemGroupedBackground))
@@ -175,6 +209,32 @@ struct LibraryView: View {
                         placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search notebooks and folders")
             .onChange(of: model.searchText) { Task { await model.reload() } }
         }
+    }
+
+    private var showsBackupReminder: Bool {
+        model.section == .documents && model.isAtRoot && !model.isSearching && !model.isSelecting
+            && !isReminderDismissed && model.hasLoaded
+            && !(model.contents.notebooks.isEmpty && model.contents.folders.isEmpty)
+            && model.index.isBackupDue()
+    }
+
+    private var backupReminder: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "externaldrive.badge.timemachine").foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.index.lastBackup == nil ? "No backup yet" : "Your last backup is older than \(LibraryIndex.backupReminderDays) days")
+                    .font(.subheadline.weight(.semibold))
+                Text("Deleting the app deletes all notebooks. See how big a backup is before you decide.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Back Up…") { backupRequest = BackupRequest(source: model.location.root, title: "Back Up Library", isWholeLibrary: true) }
+                .buttonStyle(.bordered)
+            Button("Not Now", systemImage: "xmark") { isReminderDismissed = true }
+                .labelStyle(.iconOnly).buttonStyle(.plain).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 10)
+        .background(.regularMaterial)
     }
 
     private var breadcrumbBar: some View {
@@ -361,6 +421,11 @@ struct LibraryView: View {
                         prompt = .newFolder
                     }
                     Button("Import PDF", systemImage: "square.and.arrow.down") { isPickingPDF = true }
+                    Button("Import Folder…", systemImage: "folder.badge.gearshape") { isPickingImportFolder = true }
+                    Divider()
+                    Button("Back Up Library…", systemImage: "externaldrive") {
+                        backupRequest = BackupRequest(source: model.location.root, title: "Back Up Library", isWholeLibrary: true)
+                    }
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
@@ -399,6 +464,7 @@ struct LibraryView: View {
         }
         Button("Duplicate", systemImage: "plus.square.on.square") { Task { await model.duplicate(notebook.url) } }
         Button("Move to…", systemImage: "folder") { moveRequest = MoveRequest(urls: [notebook.url]) }
+        Button("Export PDF…", systemImage: "square.and.arrow.up") { export(notebook) }
         Menu("Cover Color", systemImage: "paintpalette") {
             ForEach(LibraryModel.coverColors, id: \.self) { hex in
                 Button { Task { await model.setCoverColor(hex, for: notebook.url) } } label: {
@@ -420,6 +486,9 @@ struct LibraryView: View {
         }
         Button("Change Icon…", systemImage: "face.smiling") { styleRequest = folder }
         Button("Move to…", systemImage: "folder") { moveRequest = MoveRequest(urls: [folder.url]) }
+        Button("Back Up…", systemImage: "externaldrive") {
+            backupRequest = BackupRequest(source: folder.url, title: folder.name, isWholeLibrary: false)
+        }
         Divider()
         Button("Move to Trash", systemImage: "trash", role: .destructive) {
             itemToTrash = (folder.url, folder.name)
@@ -459,6 +528,25 @@ struct LibraryView: View {
             for item in items { await model.move(item, into: destination) }
         }
         return true
+    }
+
+    /// Opens the notebook just to read it for the export sheet. Not in a window, so it is not
+    /// claimed in the registry; a notebook that a window has open is refused, because that
+    /// window may hold ink that is not on disk yet.
+    private func export(_ notebook: NotebookSummary) {
+        if let problem = notebook.problem {
+            model.errorMessage = "\"\(notebook.title)\" cannot be exported: \(problem)"
+            return
+        }
+        guard !OpenNotebookRegistry.shared.isOpen(at: notebook.url) else {
+            model.errorMessage = "\"\(notebook.title)\" is open in a window. Export it from there, or close it first."
+            return
+        }
+        do {
+            exportNotebook = try Notebook.open(NotebookPackage(url: notebook.url))
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func open(_ notebook: NotebookSummary) {
@@ -527,4 +615,10 @@ private extension View {
     func pdfDropTarget(isTargeted: Binding<Bool>, perform: @escaping ([NSItemProvider]) -> Bool) -> some View {
         onDrop(of: [.pdf], isTargeted: isTargeted, perform: perform)
     }
+}
+
+/// Gives a `Notebook` an identity for `.sheet(item:)`.
+private struct ExportItem: Identifiable {
+    let notebook: Notebook
+    var id: ObjectIdentifier { ObjectIdentifier(notebook) }
 }

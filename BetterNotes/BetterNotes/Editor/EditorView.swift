@@ -32,6 +32,7 @@ struct EditorView: View {
     @State private var pageError: String?
     @State private var isShowingGrid = false
     @State private var insertKind: InsertKind?
+    @State private var isExporting = false
 
     init(notebook: Notebook) {
         self.notebook = notebook
@@ -97,6 +98,9 @@ struct EditorView: View {
                         notebook: notebook, thumbnails: thumbnails, navigator: navigator, actions: actions
                     ) { isShowingGrid = false }
                 }
+                .sheet(isPresented: $isExporting) {
+                    ExportSheet(notebook: notebook, thumbnails: thumbnails) { isExporting = false }
+                }
                 .navigationTitle(notebook.meta.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -108,6 +112,7 @@ struct EditorView: View {
                         Button("Page Grid", systemImage: "square.grid.2x2") { isShowingGrid = true }
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button("Export PDF", systemImage: "square.and.arrow.up") { isExporting = true }
                         Button("Search", systemImage: "magnifyingglass") {
                             if isSearching { search.clear() }
                             isSearching.toggle()

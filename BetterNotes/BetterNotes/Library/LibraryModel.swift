@@ -299,6 +299,29 @@ final class LibraryModel {
         updateIndex { $0.sortKey = key; $0.sortAscending = ascending }
     }
 
+    func recordBackup() {
+        updateIndex { $0.lastBackup = .now }
+    }
+
+    /// Copies a picked folder (an unzipped backup) or notebook into the folder on screen.
+    /// Returns a short message for the user, or `nil` if it failed (`errorMessage` is set).
+    func importFolder(from source: URL) async -> String? {
+        let parent = folder
+        do {
+            let result = try await Task.detached { () -> (url: URL, notebookCount: Int) in
+                // The picker's URL is only readable between these two calls.
+                let access = source.startAccessingSecurityScopedResource()
+                defer { if access { source.stopAccessingSecurityScopedResource() } }
+                return try LibraryBackup.importFolder(from: source, into: parent)
+            }.value
+            await reload()
+            return "Imported \(result.notebookCount) \(result.notebookCount == 1 ? "notebook" : "notebooks") as \"\(result.url.deletingPathExtension().lastPathComponent)\"."
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func recordOpened(_ notebook: NotebookSummary) {
         guard let id = notebook.notebookID else { return }
         updateIndex { $0.recordOpened(id) }

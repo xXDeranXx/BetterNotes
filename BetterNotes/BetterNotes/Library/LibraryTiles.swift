@@ -26,6 +26,7 @@ struct NotebookTile: View {
     /// `nil` when not selecting; otherwise whether this tile is ticked.
     var isSelected: Bool?
     @State private var image: UIImage?
+    @State private var size: Int64?
 
     var body: some View {
         VStack(spacing: 10) {
@@ -59,6 +60,7 @@ struct NotebookTile: View {
                 } else {
                     Text("\(notebook.updatedAt.formatted(date: .abbreviated, time: .omitted)) · \(notebook.pageCount) \(notebook.pageCount == 1 ? "page" : "pages")")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let size { Text(StorageSize.format(size)).font(.caption).foregroundStyle(.secondary) }
                 }
             }
             .frame(width: libraryTileWidth)
@@ -66,6 +68,7 @@ struct NotebookTile: View {
         .contentShape(Rectangle())
         .overlay(alignment: .topLeading) { SelectionMark(isSelected: isSelected).padding(6) }
         .task(id: notebook.updatedAt) { image = await CoverStore.shared.image(for: notebook) }
+        .task(id: notebook.updatedAt) { size = await StorageSize.measure(notebook.url) }
     }
 }
 
@@ -127,6 +130,7 @@ struct FolderTile: View {
     let folder: FolderSummary
     var isDropTargeted = false
     var isSelected: Bool?
+    @State private var size: Int64?
 
     var body: some View {
         VStack(spacing: 10) {
@@ -139,9 +143,11 @@ struct FolderTile: View {
                     RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: isDropTargeted ? 3 : 0))
             Text(folder.name).font(.subheadline.weight(.semibold)).lineLimit(2)
                 .multilineTextAlignment(.center).frame(width: libraryTileWidth)
+            if let size { Text(StorageSize.format(size)).font(.caption).foregroundStyle(.secondary) }
         }
         .contentShape(Rectangle())
         .overlay(alignment: .topLeading) { SelectionMark(isSelected: isSelected).padding(6) }
+        .task(id: folder.url) { size = await StorageSize.measure(folder.url) }
     }
 }
 
@@ -151,6 +157,7 @@ struct NotebookRow: View {
     let isFavorite: Bool
     var isSelected: Bool?
     @State private var image: UIImage?
+    @State private var size: Int64?
 
     var body: some View {
         HStack(spacing: 14) {
@@ -174,11 +181,13 @@ struct NotebookRow: View {
                 }
             }
             Spacer()
+            if let size { Text(StorageSize.format(size)).font(.callout).foregroundStyle(.secondary) }
             if isFavorite { Image(systemName: "star.fill").foregroundStyle(.yellow) }
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .contentShape(Rectangle())
         .task(id: notebook.updatedAt) { image = await CoverStore.shared.image(for: notebook) }
+        .task(id: notebook.updatedAt) { size = await StorageSize.measure(notebook.url) }
     }
 }
 
@@ -186,6 +195,7 @@ struct FolderRow: View {
     let folder: FolderSummary
     var isDropTargeted = false
     var isSelected: Bool?
+    @State private var size: Int64?
 
     var body: some View {
         HStack(spacing: 14) {
@@ -193,10 +203,12 @@ struct FolderRow: View {
             FolderIcon(style: folder.style).frame(width: 52).frame(width: 44, height: 58)
             Text(folder.name).font(.body.weight(.medium)).lineLimit(1)
             Spacer()
+            if let size { Text(StorageSize.format(size)).font(.callout).foregroundStyle(.secondary) }
             Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .background(Color.accentColor.opacity(isDropTargeted ? 0.2 : 0))
         .contentShape(Rectangle())
+        .task(id: folder.url) { size = await StorageSize.measure(folder.url) }
     }
 }

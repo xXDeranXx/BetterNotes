@@ -103,6 +103,7 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
     case cannotDeleteAllPages
     case imageUnreadable
     case sameNotebook
+    case exportHasNoPages
 
     var errorDescription: String? {
         switch self {
@@ -128,6 +129,8 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
             "This image could not be read."
         case .sameNotebook:
             "Choose a different notebook. To copy pages inside this notebook, use Duplicate."
+        case .exportHasNoPages:
+            "There are no pages to export."
         }
     }
 }
