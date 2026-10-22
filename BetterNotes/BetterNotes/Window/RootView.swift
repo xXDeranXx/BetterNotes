@@ -7,11 +7,17 @@ struct RootView: View {
     @State private var session = WindowSession()
 
     var body: some View {
-        Group {
-            if let notebook = session.notebook {
-                EditorView(notebook: notebook)
-            } else {
+        // While a notebook zooms open, the library stays underneath and the editor fades in
+        // on top of it (see `WindowSession.openZooming`); otherwise it is one or the other.
+        ZStack {
+            if session.notebook == nil || session.coverTransition != nil {
                 LibraryView()
+            }
+            if let notebook = session.notebook {
+                let zoom = session.coverTransition
+                EditorView(notebook: notebook)
+                    .opacity(zoom.map { $0.expanded ? 1 : 0 } ?? 1)
+                    .allowsHitTesting(!session.isZooming)
             }
         }
         .overlay { CoverZoomView(session: session) }
@@ -50,12 +56,13 @@ private struct CoverZoomView: View {
                     }
                 }
                 .frame(width: rect.width, height: rect.height)
+                .opacity(transition.expanded ? 0 : 1)
                 .clipShape(RoundedRectangle(cornerRadius: transition.expanded ? 0 : 10))
                 .shadow(color: .black.opacity(transition.expanded ? 0 : 0.25), radius: 8, y: 4)
                 .position(x: rect.midX, y: rect.midY)
             }
             .ignoresSafeArea()
-            .transition(.opacity)
+            .allowsHitTesting(false)
         }
     }
 }

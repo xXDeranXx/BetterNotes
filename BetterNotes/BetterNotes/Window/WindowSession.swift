@@ -34,24 +34,27 @@ final class WindowSession {
     }
 
     private(set) var coverTransition: CoverTransition?
+    var isZooming: Bool { coverTransition != nil }
 
-    /// Opens a notebook with a zoom: the cover grows to fill the window first (nothing heavy
-    /// happens meanwhile, so the animation is smooth), then the notebook opens underneath it
-    /// where nobody sees the work, then the cover fades away.
+    /// Opens a notebook with a zoom that ends in the real editor, so nothing jumps at the end:
+    /// 1. the notebook opens at once and the editor is built invisibly underneath the library
+    ///    (the heavy part, done while nothing is moving);
+    /// 2. the cover grows from its tile to the window while it fades out and the editor fades
+    ///    in, a cross-fade from the cover into the page you will write on;
+    /// 3. the library is removed.
     func openZooming(_ package: NotebookPackage, from frame: CGRect, image: UIImage?) async throws {
         if registry.isOpen(at: package.url) { throw NotebookError.alreadyOpen }
         coverTransition = CoverTransition(image: image, from: frame)
-        try? await Task.sleep(for: .milliseconds(30))  // let the first frame (at the tile) draw
-        withAnimation(.smooth(duration: 0.32)) { coverTransition?.expanded = true }
-        try? await Task.sleep(for: .milliseconds(340))
         do {
             try open(package)
         } catch {
-            withAnimation(.easeOut(duration: 0.2)) { coverTransition = nil }
+            coverTransition = nil
             throw error
         }
-        try? await Task.sleep(for: .milliseconds(80))  // the editor lays itself out
-        withAnimation(.easeOut(duration: 0.25)) { coverTransition = nil }
+        try? await Task.sleep(for: .milliseconds(180))  // the editor lays itself out
+        withAnimation(.smooth(duration: 0.4)) { coverTransition?.expanded = true }
+        try? await Task.sleep(for: .milliseconds(450))
+        coverTransition = nil
     }
 
     func open(_ package: NotebookPackage) throws {
