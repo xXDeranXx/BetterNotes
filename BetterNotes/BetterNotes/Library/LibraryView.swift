@@ -17,6 +17,8 @@ struct LibraryView: View {
     @State private var itemToMove: URL?
     @State private var itemToTrash: (url: URL, name: String)?
     @State private var dropTargetFolder: URL?
+    @State private var isConfirmingEmptyTrash = false
+    @State private var isTrashDropTargeted = false
 
     private enum NamePrompt: Identifiable {
         case newFolder
@@ -97,6 +99,11 @@ struct LibraryView: View {
         } message: {
             Text("You can put it back from the Trash for 30 days.")
         }
+        .confirmationDialog("Delete everything in the trash permanently?", isPresented: $isConfirmingEmptyTrash, titleVisibility: .visible) {
+            Button("Empty Trash", role: .destructive) { Task { await model.emptyTrash() } }
+        } message: {
+            Text("This cannot be undone.")
+        }
         .alert("Something went wrong", isPresented: Binding(
             get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
         ) {
@@ -132,6 +139,14 @@ struct LibraryView: View {
             }
             Section {
                 Label("Trash", systemImage: "trash").tag(LibrarySection.trash)
+                    .listRowBackground(isTrashDropTargeted ? Color.accentColor.opacity(0.25) : nil)
+                    // Dropping a notebook or folder here moves it to the trash (recoverable).
+                    .dropDestination(for: String.self) { payloads, _ in
+                        let items = payloads.compactMap(model.dragged)
+                        guard !items.isEmpty else { return false }
+                        Task { for item in items { await model.trash(item) } }
+                        return true
+                    } isTargeted: { isTrashDropTargeted = $0 }
             }
         }
         .navigationTitle("BetterNotes")
@@ -244,7 +259,10 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if model.section != .trash {
+            if model.section == .trash {
+                Button("Empty Trash", role: .destructive) { isConfirmingEmptyTrash = true }
+                    .disabled(model.trashed.isEmpty)
+            } else {
                 Menu {
                     Picker("Sort by", selection: Binding(get: { model.index.sortKey }, set: {
                         model.setSort($0, ascending: model.index.sortAscending)

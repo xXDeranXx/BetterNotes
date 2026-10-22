@@ -106,46 +106,59 @@ struct FolderPickerSheet: View {
     }
 }
 
-/// The trash: what was deleted, with Put Back and Delete Forever. Items older than 30 days
-/// are removed by the app on launch.
+/// The trash: what was deleted, with Put Back and Delete Forever (both ask first). Items older
+/// than 30 days are removed by the app on launch. "Empty Trash" lives in the library's toolbar.
 struct TrashView: View {
     let model: LibraryModel
-    @State private var confirmEmpty = false
+
+    private enum Action { case putBack, deleteForever }
+    @State private var pending: (item: TrashedItem, action: Action)?
+
+    private func name(_ item: TrashedItem) -> String { item.url.deletingPathExtension().lastPathComponent }
 
     var body: some View {
         Group {
             if model.trashed.isEmpty {
                 ContentUnavailableView(
                     "Trash is empty", systemImage: "trash",
-                    description: Text("Deleted notebooks and folders stay here for 30 days."))
+                    description: Text("Deleted notebooks and folders stay here for 30 days. Drag a notebook onto Trash in the sidebar to delete it."))
             } else {
                 List(model.trashed) { item in
                     HStack {
                         Image(systemName: item.url.pathExtension == NotebookPackage.fileExtension ? "book.closed" : "folder")
                         VStack(alignment: .leading) {
-                            Text(item.url.deletingPathExtension().lastPathComponent)
+                            Text(name(item))
                             Text("Deleted \(item.trashedAt.formatted(date: .abbreviated, time: .shortened))")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("Put Back") { Task { await model.putBack(item) } }
+                        Button("Put Back") { pending = (item, .putBack) }
                             .buttonStyle(.bordered)
-                        Button("Delete Forever", role: .destructive) { Task { await model.deleteForever(item) } }
+                        Button("Delete Forever", role: .destructive) { pending = (item, .deleteForever) }
                             .buttonStyle(.bordered)
                     }
                 }
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Empty Trash", role: .destructive) { confirmEmpty = true }
-                    .disabled(model.trashed.isEmpty)
+        .confirmationDialog(
+            pending.map { $0.action == .putBack ? "Put back \"\(name($0.item))\"?" : "Delete \"\(name($0.item))\" forever?" } ?? "",
+            isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let pending {
+                switch pending.action {
+                case .putBack:
+                    Button("Put Back") { Task { await model.putBack(pending.item) } }
+                case .deleteForever:
+                    Button("Delete Forever", role: .destructive) { Task { await model.deleteForever(pending.item) } }
+                }
             }
-        }
-        .confirmationDialog("Delete everything in the trash permanently?", isPresented: $confirmEmpty, titleVisibility: .visible) {
-            Button("Empty Trash", role: .destructive) { Task { await model.emptyTrash() } }
         } message: {
-            Text("This cannot be undone.")
+            if let pending {
+                Text(pending.action == .putBack
+                     ? "It returns to its original folder."
+                     : "This cannot be undone.")
+            }
         }
     }
 }

@@ -10,10 +10,15 @@ struct RootView: View {
         Group {
             if let notebook = session.notebook {
                 EditorView(notebook: notebook)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
                 LibraryView()
+                    .transition(.opacity)
             }
         }
+        // Opening or closing a notebook fades and eases in instead of cutting. SwiftUI animates
+        // the swap above whenever the value below changes (like a CSS transition in React).
+        .animation(.smooth(duration: 0.35), value: session.notebook != nil)
         .environment(session)
         // "Open in BetterNotes" from the share sheet or the Files app arrives here as a URL.
         // Like a route change in a React app: the system hands the window a URL and the
