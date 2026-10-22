@@ -92,10 +92,61 @@ nonisolated struct NotebookPackage: Sendable {
     }
 
     func writeMeta(_ meta: NotebookMeta) throws {
+        try Self.encode(meta).write(to: metaURL, options: .atomic)
+    }
+
+    private static func encode(_ meta: NotebookMeta) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]  // readable, stable diffs
-        try encoder.encode(meta).write(to: metaURL, options: .atomic)
+        return try encoder.encode(meta)
+    }
+
+    // MARK: Changing the pages (document.pdf and meta.json together)
+
+    private var pendingURL: URL { url.appending(path: "pending", directoryHint: .isDirectory) }
+    private var commitMarkerURL: URL { pendingURL.appending(path: "COMMIT") }
+    private static let structureFiles = ["document.pdf", "meta.json"]
+
+    /// Replaces `document.pdf` and `meta.json` as one unit. They are two files, and the page
+    /// list must always match the PDF (SPEC, "File format"), so a crash between writing the
+    /// two must not leave a pair that disagrees:
+    /// 1. both new files are written into `pending/`, each atomically;
+    /// 2. an empty `COMMIT` file is written last, which means "the new pair is complete";
+    /// 3. the files are moved over the old ones.
+    /// If the app dies before step 2, `pending/` is incomplete and is thrown away on the next
+    /// open (the old pair is untouched). If it dies during step 3, the next open finishes the
+    /// move (`finishPendingCommit`). Either way the notebook opens with a matching pair.
+    func commitStructure(pdfData: Data, meta: NotebookMeta) throws {
+        try stageStructure(pdfData: pdfData, meta: meta)
+        try finishPendingCommit()
+    }
+
+    /// Steps 1 and 2 of `commitStructure`; separate so tests can stop "in the middle".
+    func stageStructure(pdfData: Data, meta: NotebookMeta) throws {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: pendingURL.path) { try fileManager.removeItem(at: pendingURL) }
+        try fileManager.createDirectory(at: pendingURL, withIntermediateDirectories: true)
+        try pdfData.write(to: pendingURL.appending(path: "document.pdf"), options: .atomic)
+        try Self.encode(meta).write(to: pendingURL.appending(path: "meta.json"), options: .atomic)
+        try Data().write(to: commitMarkerURL, options: .atomic)
+    }
+
+    /// Step 3, and the repair after a crash: finishes a complete `pending/` or discards an
+    /// incomplete one. Does nothing when there is no `pending/`. Safe to call any time.
+    func finishPendingCommit() throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: pendingURL.path) else { return }
+        if fileManager.fileExists(atPath: commitMarkerURL.path) {
+            for name in Self.structureFiles {
+                let staged = pendingURL.appending(path: name)
+                // A file that is already gone was moved before an interruption.
+                if fileManager.fileExists(atPath: staged.path) {
+                    _ = try fileManager.replaceItemAt(url.appending(path: name), withItemAt: staged)
+                }
+            }
+        }
+        try fileManager.removeItem(at: pendingURL)  // our own staging folder, never user data
     }
 
     // MARK: Drawings

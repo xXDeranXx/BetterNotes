@@ -51,15 +51,19 @@ nonisolated extension NotebookPackage {
         // many entries as the PDF (SPEC, "File format").
         return try (0..<document.pageCount).map { index in
             guard let page = document.page(at: index) else { throw NotebookError.pdfUnreadable }
-            // `bounds(for:)` ignores the page's own rotation (measured: a page rotated by 90
-            // still reports the unrotated box), but PDFView shows it turned. So swap here.
-            let box = page.bounds(for: .cropBox)
-            let size = PageSize(width: box.width, height: box.height)
-            let turnedOnItsSide = page.rotation % 180 != 0
-            return PageMeta(
-                template: .pdf, size: turnedOnItsSide ? size.landscape : size,
-                rotation: page.rotation)
+            return pageMeta(of: page)
         }
+    }
+
+    /// The `meta.json` entry for a page of an imported PDF.
+    static func pageMeta(of page: PDFPage) -> PageMeta {
+        // `bounds(for:)` ignores the page's own rotation (measured: a page rotated by 90
+        // still reports the unrotated box), but PDFView shows it turned. So swap here.
+        let box = page.bounds(for: .cropBox)
+        let size = PageSize(width: box.width, height: box.height)
+        let turnedOnItsSide = page.rotation % 180 != 0
+        return PageMeta(
+            template: .pdf, size: turnedOnItsSide ? size.landscape : size, rotation: page.rotation)
     }
 
     /// The notebook title for an imported file: its name without ".pdf".

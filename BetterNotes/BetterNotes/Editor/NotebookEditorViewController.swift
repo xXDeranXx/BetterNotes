@@ -44,10 +44,10 @@ final class NotebookEditorViewController: UIViewController {
         super.viewDidLoad()
 
         // SPEC, "File format": the page list and the PDF must agree. If not, do not guess.
-        guard let document = PDFDocument(url: notebook.package.pdfURL),
-            document.pageCount == notebook.pages.count
-        else {
-            showProblem("This notebook cannot be opened: its page list and its PDF do not match. Nothing was changed.")
+        // The model checked that when it opened; it shares its document with this view, so a
+        // page operation on the model shows up here without further work.
+        guard let document = notebook.document else {
+            showProblem(notebook.structureProblem ?? "This notebook cannot be opened.")
             return
         }
 
@@ -65,6 +65,12 @@ final class NotebookEditorViewController: UIViewController {
         pdfView.document = document
         view.addSubview(pdfView)
         search.pdfView = pdfView
+
+        // PDFView re-lays-out by itself when pages are added or removed, but not when a page
+        // is turned; asking it to lay out again after every page operation covers both.
+        notebook.onStructureChange = { [weak self] in
+            self?.pdfView.layoutDocumentView()
+        }
 
         // Keep ink sharp: tell the coordinator about every zoom change (see EditorCoordinator).
         NotificationCenter.default.addObserver(

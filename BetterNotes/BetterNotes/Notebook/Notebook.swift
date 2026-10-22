@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PDFKit
 import PencilKit
 
 /// The single source of truth for an open notebook (SPEC, architecture decisions 1, 2 and 5).
@@ -17,6 +18,20 @@ import PencilKit
 final class Notebook {
     let package: NotebookPackage
     private(set) var meta: NotebookMeta
+
+    /// The notebook's PDF. This one object is shown by the editor's `PDFView` and changed by
+    /// the page operations (`Notebook+Pages.swift`), so the screen follows the model. `nil`
+    /// when the PDF cannot be read or does not have as many pages as `meta.pages` (SPEC,
+    /// "File format"): the notebook then cannot be shown or changed, see `structureProblem`.
+    private(set) var document: PDFDocument?
+    private(set) var structureProblem: String?
+
+    /// Which page id belongs to which `PDFPage` object. PDFKit asks for a page's overlay in
+    /// the middle of `document.insert(...)`, when the PDF already has a new page but the page
+    /// list does not yet, so a page's id cannot be worked out from its position in the PDF
+    /// (measured: that gave canvases the wrong page's ink). The page object itself is the
+    /// reliable key. Weak keys: a page that is gone for good takes its entry with it.
+    @ObservationIgnored private let pageIDsByPage = NSMapTable<PDFPage, NSUUID>.weakToStrongObjects()
 
     /// One history per notebook window. `groupsByEvent` is off: we group explicitly in
     /// `performUndoableChange`, so one user action is exactly one undo step.
@@ -40,6 +55,19 @@ final class Notebook {
     /// Pages whose saved drawing file could not be read. Their drawing starts empty, but the
     /// file on disk must not be overwritten blindly: autosave keeps a copy first (step 6).
     @ObservationIgnored private(set) var unreadablePageIDs: Set<UUID> = []
+
+    /// True while the page list or the PDF changed and is not yet on disk (see
+    /// `setPageList`). Counted like a page's revision, so a change made during a save is
+    /// not wrongly marked as saved.
+    @ObservationIgnored private(set) var structureDirty = false
+    @ObservationIgnored private var structureRevision = 0
+
+    /// Called after a page operation changed the page list or a page (also by undo and redo).
+    /// The editor refreshes its `PDFView` here.
+    @ObservationIgnored var onStructureChange: (() -> Void)?
+
+    /// Anything not yet written: ink or page changes.
+    var hasUnsavedChanges: Bool { !dirtyPageIDs.isEmpty || structureDirty }
 
     /// How long after the last change autosave waits (SPEC: about 2 seconds).
     @ObservationIgnored var autosaveDelay: Duration = .seconds(2)
@@ -65,6 +93,14 @@ final class Notebook {
     init(package: NotebookPackage, meta: NotebookMeta) {
         self.package = package
         self.meta = meta
+        if let document = PDFDocument(url: package.pdfURL), document.pageCount == meta.pages.count {
+            self.document = document
+            for (index, page) in meta.pages.enumerated() {
+                if let pdfPage = document.page(at: index) { pageIDsByPage.setObject(page.id as NSUUID, forKey: pdfPage) }
+            }
+        } else {
+            structureProblem = "This notebook cannot be changed: its page list and its PDF do not match. Nothing was changed."
+        }
         // No observer cleanup needed: the observers are tied to this notebook's own
         // UndoManager and only hold `self` weakly.
         for name in [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange,
@@ -82,10 +118,22 @@ final class Notebook {
     }
 
     static func open(_ package: NotebookPackage) throws -> Notebook {
-        Notebook(package: package, meta: try package.readMeta())
+        // A page change that was interrupted by a crash is finished (or thrown away) first.
+        try package.finishPendingCommit()
+        return Notebook(package: package, meta: try package.readMeta())
     }
 
     var pages: [PageMeta] { meta.pages }
+
+    /// The id of the page that `page` is (or was, or is about to become) in this notebook.
+    func pageID(for page: PDFPage) -> UUID? {
+        pageIDsByPage.object(forKey: page) as UUID?
+    }
+
+    /// Must be called before the page goes into `document`.
+    func register(_ page: PDFPage, as id: UUID) {
+        pageIDsByPage.setObject(id as NSUUID, forKey: page)
+    }
 
     // MARK: Drawings
 
@@ -117,6 +165,25 @@ final class Notebook {
             !visiblePageIDs.contains($0) && !dirtyPageIDs.contains($0) && !unreadablePageIDs.contains($0)
         }
         for pageID in evictable { drawings[pageID] = nil }
+    }
+
+    /// Stores a drawing for a page without an undo step of its own; page operations use it
+    /// for the ink of new pages (the operation's own undo step removes the page again).
+    func storeDrawing(_ drawing: PKDrawing, for pageID: UUID) {
+        drawings[pageID] = drawing
+        dirtyPageIDs.insert(pageID)
+        revisions[pageID, default: 0] += 1
+        scheduleAutosave()
+    }
+
+    /// The only place that changes the page list. Page operations call it after they changed
+    /// `document`, so the list and the PDF always change together. Saved with the next autosave.
+    func setPageList(_ pages: [PageMeta]) {
+        meta.pages = pages
+        structureDirty = true
+        structureRevision += 1
+        scheduleAutosave()
+        onStructureChange?()
     }
 
     /// Replaces a page's drawing and records one undo step. This is the only way ink
@@ -197,20 +264,48 @@ final class Notebook {
         let preserveExistingFile: Bool
     }
 
+    /// A changed page list: the new PDF's bytes and the matching `meta.json`, written together.
+    private struct StructureSnapshot: Sendable {
+        let pdfData: Data
+        let meta: NotebookMeta
+        let revision: Int
+    }
+
     private func performSave() async {
         let snapshots = dirtyPageIDs.map {
             PageSnapshot(
                 pageID: $0, drawing: drawings[$0] ?? PKDrawing(), revision: revisions[$0] ?? 0,
                 preserveExistingFile: unreadablePageIDs.contains($0))
         }
-        guard !snapshots.isEmpty else { return }
+        // The PDF is turned into bytes here on the main thread (PDFKit objects are not for
+        // other threads); only writing the bytes happens in the background.
+        var structure: StructureSnapshot?
+        var structureFailure: String?
+        if structureDirty {
+            if let document, let data = document.dataRepresentation() {
+                meta.updatedAt = .now
+                structure = StructureSnapshot(pdfData: data, meta: meta, revision: structureRevision)
+            } else {
+                structureFailure = "The notebook's PDF could not be prepared for saving."
+            }
+        }
+        guard !snapshots.isEmpty || structure != nil || structureFailure != nil else { return }
         await saveHook?()
 
         // The file work runs off the main thread so writing never stutters the pen.
         let package = self.package
-        let result = await Task.detached { () -> (saved: [PageSnapshot], failure: String?) in
+        let result = await Task.detached { () -> (saved: [PageSnapshot], structureSaved: Bool, failure: String?) in
             var saved: [PageSnapshot] = []
+            var structureSaved = false
             var failure: String?
+            if let structure {
+                do {
+                    try package.commitStructure(pdfData: structure.pdfData, meta: structure.meta)
+                    structureSaved = true
+                } catch {
+                    failure = error.localizedDescription  // keep going: ink can still be saved
+                }
+            }
             for snapshot in snapshots {
                 do {
                     if snapshot.preserveExistingFile {
@@ -219,20 +314,26 @@ final class Notebook {
                     try package.saveDrawing(snapshot.drawing, for: snapshot.pageID)
                     saved.append(snapshot)
                 } catch {
-                    failure = error.localizedDescription  // keep going: other pages may still save
+                    failure = failure ?? error.localizedDescription  // other pages may still save
                 }
             }
-            return (saved, failure)
+            return (saved, structureSaved, failure)
         }.value
 
-        var failure = result.failure
+        var failure = result.failure ?? structureFailure
+        if result.structureSaved, let structure, structureRevision == structure.revision {
+            structureDirty = false
+        }
         for snapshot in result.saved {
             unreadablePageIDs.remove(snapshot.pageID)  // its old file is now safely copied aside
             if revisions[snapshot.pageID] == snapshot.revision {
                 dirtyPageIDs.remove(snapshot.pageID)
             }
         }
-        if !result.saved.isEmpty {
+        // meta.json is only written alone when the page list on disk is current: writing a
+        // newer page list without its PDF would make the two disagree. (When the page list
+        // was saved this round, the commit above already wrote meta.json.)
+        if !result.saved.isEmpty, !structureDirty, !result.structureSaved {
             meta.updatedAt = .now
             do {
                 try package.writeMeta(meta)

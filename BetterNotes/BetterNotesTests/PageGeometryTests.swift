@@ -73,7 +73,7 @@ struct PageGeometryAgainstPDFViewTests {
         let pdfView = PDFView(frame: window.bounds)
         pdfView.displayMode = .singlePageContinuous
         pdfView.pageOverlayViewProvider = coordinator
-        pdfView.document = PDFDocument(url: package.pdfURL)
+        pdfView.document = notebook.document
         window.addSubview(pdfView)
         window.makeKeyAndVisible()
         pdfView.scaleFactor = zoom

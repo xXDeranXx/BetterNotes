@@ -76,7 +76,7 @@ final class WindowSession {
     func close() async {
         guard let notebook else { return }
         await notebook.saveChanges()
-        guard notebook.dirtyPageIDs.isEmpty else { return }
+        guard !notebook.hasUnsavedChanges else { return }
         self.notebook = nil
         if let claimedURL { registry.release(claimedURL) }
         claimedURL = nil

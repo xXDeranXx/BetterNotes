@@ -71,12 +71,11 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
 
     // MARK: Page → page id
 
-    /// The one place that maps a PDF page to its id: the page's index in the PDF is its
-    /// index in `meta.pages` (SPEC, "File format").
+    /// The one place that maps a PDF page to its id. The notebook knows it by the page object,
+    /// not by position: PDFKit asks for overlays while the PDF and the page list are still
+    /// being changed together (see `Notebook.pageID(for:)`).
     func pageID(for page: PDFPage) -> UUID? {
-        guard let document = page.document else { return nil }
-        let index = document.index(for: page)
-        return notebook.pages.indices.contains(index) ? notebook.pages[index].id : nil
+        notebook.pageID(for: page)
     }
 
     // MARK: PDFPageOverlayViewProvider

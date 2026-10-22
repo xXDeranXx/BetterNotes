@@ -99,6 +99,9 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
     case pdfUnreadable
     case pdfPasswordProtected
     case pdfHasNoPages
+    case pagesCannotBeChanged
+    case cannotDeleteAllPages
+    case imageUnreadable
 
     var errorDescription: String? {
         switch self {
@@ -116,6 +119,12 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
             "This PDF is password protected. Remove the password in another app, then import it again."
         case .pdfHasNoPages:
             "This PDF has no pages."
+        case .pagesCannotBeChanged:
+            "The pages of this notebook cannot be changed because its page list and its PDF do not match."
+        case .cannotDeleteAllPages:
+            "A notebook needs at least one page. Add another page first, or delete the notebook."
+        case .imageUnreadable:
+            "This image could not be read."
         }
     }
 }

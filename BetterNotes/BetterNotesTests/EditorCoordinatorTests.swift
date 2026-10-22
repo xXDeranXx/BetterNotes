@@ -151,13 +151,27 @@ struct EditorCoordinatorTests {
         #expect(setup.notebook.canUndo && !setup.notebook.canRedo)
     }
 
-    @Test func pagesAreMappedToIDsByIndex() throws {
-        let setup = try makeSetup()
-        let document = try #require(PDFDocument(url: setup.notebook.package.pdfURL))
-        // The test notebook's PDF has 1 page but meta lists 2: page 0 maps, the rest is unmapped.
+    @Test func pagesAreMappedToIDsByThePageObjectNotItsPosition() throws {
+        let folder = try TempFolder()
+        let source = try makeLabeledPDF(in: folder.url, labels: ["P1", "P2"])
+        let package = try NotebookPackage.importPDF(
+            from: source, in: folder.url.appending(path: "library"), title: "T", coverColor: "#000000")
+        let notebook = try Notebook.open(package)
+        let coordinator = EditorCoordinator(notebook: notebook)
+        let document = try #require(notebook.document)
         let first = try #require(document.page(at: 0))
+        let second = try #require(document.page(at: 1))
 
-        #expect(setup.coordinator.pageID(for: first) == setup.pageA)
+        #expect(coordinator.pageID(for: first) == notebook.pages[0].id)
+        #expect(coordinator.pageID(for: second) == notebook.pages[1].id)
+
+        // After a move the pages keep their ids even though their positions changed.
+        try notebook.movePages([notebook.pages[0].id], toIndex: 1)
+        #expect(coordinator.pageID(for: first) == notebook.pages[1].id)
+        #expect(coordinator.pageID(for: second) == notebook.pages[0].id)
+
+        // A page from outside the notebook has no id.
+        #expect(coordinator.pageID(for: PDFPage()) == nil)
     }
 
     @Test func canvasRenderScaleFollowsTheZoomButIsCapped() {
