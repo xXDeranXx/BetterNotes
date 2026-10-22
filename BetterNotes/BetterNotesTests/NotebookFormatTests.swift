@@ -4,40 +4,6 @@ import PencilKit
 import Testing
 @testable import BetterNotes
 
-/// A fresh temporary folder that is removed when the test ends.
-private final class TempFolder {
-    let url: URL
-    init() throws {
-        url = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    }
-    deinit {
-        // A test may leave a folder read-only on purpose; make it deletable again.
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
-        try? FileManager.default.removeItem(at: url)
-    }
-}
-
-private func makeNotebook(
-    in parent: URL, title: String = "Test", template: PageTemplate = .lined,
-    size: PageSize = .a4Portrait
-) throws -> NotebookPackage {
-    try NotebookPackage.create(
-        in: parent, title: title, template: template, size: size, coverColor: "#3366CC")
-}
-
-private func sampleDrawing() -> PKDrawing {
-    let points = [
-        PKStrokePoint(location: CGPoint(x: 10, y: 10), timeOffset: 0, size: CGSize(width: 4, height: 4),
-                      opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2),
-        PKStrokePoint(location: CGPoint(x: 100, y: 80), timeOffset: 0.1, size: CGSize(width: 4, height: 4),
-                      opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2),
-    ]
-    let path = PKStrokePath(controlPoints: points, creationDate: Date(timeIntervalSince1970: 1_700_000_000))
-    return PKDrawing(strokes: [PKStroke(ink: PKInk(.pen, color: .black), path: path)])
-}
-
 struct MetaJSONTests {
     @Test func roundTripKeepsEverything() throws {
         let folder = try TempFolder()
