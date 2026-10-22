@@ -251,6 +251,19 @@ final class LibraryModel {
         await perform { try operations.duplicate(url) }
     }
 
+    func setFolderStyle(_ style: FolderStyle, for url: URL) async {
+        let operations = operations
+        await perform { try operations.setFolderStyle(style, for: url) }
+    }
+
+    /// Symbols offered for folders (SF Symbols).
+    static let folderSymbols = [
+        "book.closed", "books.vertical", "graduationcap", "building.columns", "pencil.and.ruler", "function",
+        "atom", "flask", "globe.europe.africa", "laptopcomputer", "chart.bar", "music.note",
+        "paintpalette", "heart", "star", "briefcase", "house", "person.2", "leaf", "flag",
+        "lightbulb", "calendar", "doc.text", "camera",
+    ]
+
     func setCoverColor(_ color: String, for url: URL) async {
         let operations = operations
         await perform { try operations.setCoverColor(color, for: url) }

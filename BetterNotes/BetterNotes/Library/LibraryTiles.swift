@@ -84,7 +84,45 @@ struct SelectionMark: View {
     }
 }
 
-/// A folder tile: a big blue folder, its name, and how many things are inside.
+/// A folder drawn the way people expect one: a back panel with a tab, a lighter front panel,
+/// and the chosen symbol on the front, all in the folder's color.
+struct FolderIcon: View {
+    let style: FolderStyle
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            let base = Color(hex: style.color)
+            ZStack(alignment: .topLeading) {
+                // Back panel and its tab.
+                RoundedRectangle(cornerRadius: w * 0.09)
+                    .fill(base.mix(with: .black, by: 0.22))
+                    .frame(width: w * 0.42, height: h * 0.3)
+                RoundedRectangle(cornerRadius: w * 0.07)
+                    .fill(base.mix(with: .black, by: 0.22))
+                    .frame(width: w, height: h * 0.8)
+                    .offset(y: h * 0.14)
+                // Front panel.
+                RoundedRectangle(cornerRadius: w * 0.07)
+                    .fill(LinearGradient(colors: [base.mix(with: .white, by: 0.18), base], startPoint: .top, endPoint: .bottom))
+                    .frame(width: w, height: h * 0.68)
+                    .offset(y: h * 0.32)
+                    .shadow(color: .black.opacity(0.18), radius: w * 0.02, y: -w * 0.005)
+                if let symbol = style.symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: w * 0.3, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
+                        .frame(width: w, height: h * 0.68)
+                        .offset(y: h * 0.32)
+                }
+            }
+        }
+        .aspectRatio(1.25, contentMode: .fit)
+    }
+}
+
+/// A folder tile: the folder icon, its name, and a highlight while something is dragged over it.
 struct FolderTile: View {
     let folder: FolderSummary
     var isDropTargeted = false
@@ -92,9 +130,8 @@ struct FolderTile: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "folder.fill")
-                .font(.system(size: 110))
-                .foregroundStyle(Color.accentColor.opacity(0.85))
+            FolderIcon(style: folder.style)
+                .frame(width: libraryTileWidth * 0.86)
                 .frame(width: libraryTileWidth, height: libraryTileHeight)
                 .background(
                     RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(isDropTargeted ? 0.25 : 0)))
@@ -153,8 +190,7 @@ struct FolderRow: View {
     var body: some View {
         HStack(spacing: 14) {
             SelectionMark(isSelected: isSelected)
-            Image(systemName: "folder.fill").font(.title).foregroundStyle(Color.accentColor.opacity(0.85))
-                .frame(width: 44, height: 58)
+            FolderIcon(style: folder.style).frame(width: 52).frame(width: 44, height: 58)
             Text(folder.name).font(.body.weight(.medium)).lineLimit(1)
             Spacer()
             Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)

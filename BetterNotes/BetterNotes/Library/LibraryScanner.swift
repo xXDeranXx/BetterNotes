@@ -27,6 +27,7 @@ extension NotebookSummary {
 
 nonisolated struct FolderSummary: Identifiable, Equatable, Sendable {
     let url: URL
+    var style: FolderStyle = .default
     var name: String { url.lastPathComponent }
     var id: URL { url }
 }
@@ -54,7 +55,7 @@ nonisolated enum LibraryScanner {
             if url.pathExtension == NotebookPackage.fileExtension {
                 notebooks.append(summary(of: url))
             } else {
-                folders.append(FolderSummary(url: url))
+                folders.append(FolderSummary(url: url, style: FolderStyle.load(from: url)))
             }
         }
         return FolderContents(folders: folders, notebooks: notebooks)

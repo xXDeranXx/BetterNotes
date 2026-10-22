@@ -122,6 +122,18 @@ nonisolated struct LibraryOperations: Sendable {
         return target
     }
 
+    // MARK: Folder look
+
+    /// Sets a folder's symbol and color (see `FolderStyle`).
+    func setFolderStyle(_ style: FolderStyle, for folder: URL) throws {
+        try requireInsideLibrary(folder)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue,
+              folder.pathExtension != NotebookPackage.fileExtension
+        else { throw LibraryError.notAFolder }
+        try style.save(to: folder)
+    }
+
     // MARK: Cover
 
     /// Changes the cover color ("#RRGGBB") of a notebook.

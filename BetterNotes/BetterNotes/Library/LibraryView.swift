@@ -15,6 +15,7 @@ struct LibraryView: View {
     @State private var prompt: NamePrompt?
     @State private var promptText = ""
     @State private var moveRequest: MoveRequest?
+    @State private var styleRequest: FolderSummary?
     @State private var isConfirmingDeleteSelection = false
     @State private var itemToTrash: (url: URL, name: String)?
     @State private var dropTargetFolder: URL?
@@ -75,6 +76,15 @@ struct LibraryView: View {
                     }
                 },
                 cancel: { isCreatingNotebook = false })
+        }
+        .sheet(item: $styleRequest) { folder in
+            FolderStyleSheet(
+                name: folder.name, style: folder.style,
+                save: { style in
+                    styleRequest = nil
+                    Task { await model.setFolderStyle(style, for: folder.url) }
+                },
+                cancel: { styleRequest = nil })
         }
         .sheet(item: $moveRequest) { request in
             FolderPickerSheet(
@@ -414,6 +424,7 @@ struct LibraryView: View {
             promptText = folder.name
             prompt = .rename(folder.url, folder.name)
         }
+        Button("Change Icon…", systemImage: "face.smiling") { styleRequest = folder }
         Button("Move to…", systemImage: "folder") { moveRequest = MoveRequest(urls: [folder.url]) }
         Divider()
         Button("Move to Trash", systemImage: "trash", role: .destructive) {

@@ -403,4 +403,50 @@ struct LibraryOperationsTests {
 
         #expect(found.map(\.title) == ["Lecture"])
     }
+
+    // MARK: Folder look
+
+    @Test func folderStyleIsSavedInsideTheFolderAndFollowsIt() throws {
+        let f = try Fixture()
+        let folder = try f.operations.createFolder(named: "School", in: f.root)
+        _ = try makeNotebook(in: folder, title: "Inside")
+
+        try f.operations.setFolderStyle(FolderStyle(symbol: "graduationcap", color: "#E5484D"), for: folder)
+
+        #expect(LibraryScanner.contents(of: f.root).folders.first?.style == FolderStyle(symbol: "graduationcap", color: "#E5484D"))
+        // The settings file is hidden: it is not a notebook, a folder or an item in the listing.
+        #expect(LibraryScanner.contents(of: folder).folders.isEmpty)
+        #expect(LibraryScanner.contents(of: folder).notebooks.map(\.title) == ["Inside"])
+
+        // Renaming and moving keep the look, because the file lives in the folder.
+        let other = try f.operations.createFolder(named: "Archive", in: f.root)
+        let renamed = try f.operations.rename(folder, to: "Uni")
+        let moved = try f.operations.move(renamed, into: other)
+        #expect(FolderStyle.load(from: moved) == FolderStyle(symbol: "graduationcap", color: "#E5484D"))
+    }
+
+    @Test func defaultStyleLeavesNoFileAndBrokenFileMeansDefault() throws {
+        let f = try Fixture()
+        let folder = try f.operations.createFolder(named: "Plain", in: f.root)
+        try f.operations.setFolderStyle(FolderStyle(symbol: "book.closed"), for: folder)
+        #expect(exists(folder.appending(path: FolderStyle.fileName)))
+
+        try f.operations.setFolderStyle(.default, for: folder)
+        #expect(!exists(folder.appending(path: FolderStyle.fileName)))
+
+        try Data("{ broken".utf8).write(to: folder.appending(path: FolderStyle.fileName))
+        #expect(FolderStyle.load(from: folder) == .default)
+    }
+
+    @Test func folderStyleOnlyAppliesToFoldersInsideTheLibrary() throws {
+        let f = try Fixture()
+        let notebook = try makeNotebook(in: f.root, title: "N")
+        #expect(throws: LibraryError.notAFolder) {
+            try f.operations.setFolderStyle(FolderStyle(symbol: "star"), for: notebook.url)
+        }
+        let outside = try TempFolder()
+        #expect(throws: LibraryError.outsideLibrary) {
+            try f.operations.setFolderStyle(FolderStyle(symbol: "star"), for: outside.url)
+        }
+    }
 }

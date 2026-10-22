@@ -161,3 +161,74 @@ private struct TrashRow: View {
         }
     }
 }
+
+/// Pick a symbol and a color for a folder, with a live preview.
+struct FolderStyleSheet: View {
+    let name: String
+    @State var style: FolderStyle
+    let save: (FolderStyle) -> Void
+    let cancel: () -> Void
+
+    private let columns = [GridItem(.adaptive(minimum: 52), spacing: 10)]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 22) {
+                    VStack(spacing: 8) {
+                        FolderIcon(style: style).frame(width: 150)
+                        Text(name).font(.headline)
+                    }
+                    .padding(.top, 8)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Color").font(.subheadline).foregroundStyle(.secondary)
+                        HStack(spacing: 14) {
+                            ForEach([FolderStyle.defaultColor] + LibraryModel.coverColors, id: \.self) { hex in
+                                Button { style.color = hex } label: {
+                                    Circle().fill(Color(hex: hex)).frame(width: 34, height: 34)
+                                        .overlay {
+                                            if style.color == hex {
+                                                Image(systemName: "checkmark").font(.footnote.bold()).foregroundStyle(.white)
+                                            }
+                                        }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Symbol").font(.subheadline).foregroundStyle(.secondary)
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            symbolButton(nil)
+                            ForEach(LibraryModel.folderSymbols, id: \.self) { symbolButton($0) }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("Folder Icon")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
+                ToolbarItem(placement: .confirmationAction) { Button("Save") { save(style) } }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private func symbolButton(_ symbol: String?) -> some View {
+        Button { style.symbol = symbol } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(style.symbol == symbol ? Color.accentColor.opacity(0.2) : Color(.secondarySystemBackground))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: style.symbol == symbol ? 2 : 0))
+                if let symbol { Image(systemName: symbol).font(.title3) } else { Text("None").font(.caption) }
+            }
+            .frame(height: 52)
+        }
+        .buttonStyle(.plain)
+    }
+}
