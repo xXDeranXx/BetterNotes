@@ -19,6 +19,16 @@ nonisolated final class OpenNotebookRegistry: Sendable {
         openNotebooks.withLock { $0.insert(Self.key(url)).inserted }
     }
 
+    /// `true` if a window has this notebook open, or (for a folder) any notebook inside it.
+    /// Moving, renaming or trashing something that is open would pull it away from its window.
+    func isOpen(at url: URL) -> Bool {
+        let key = Self.key(url)
+        let prefix = key.path.hasSuffix("/") ? key.path : key.path + "/"
+        return openNotebooks.withLock { open in
+            open.contains { $0 == key || $0.path.hasPrefix(prefix) }
+        }
+    }
+
     func release(_ url: URL) {
         _ = openNotebooks.withLock { $0.remove(Self.key(url)) }
     }
