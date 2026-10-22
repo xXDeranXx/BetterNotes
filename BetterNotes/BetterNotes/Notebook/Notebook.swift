@@ -26,6 +26,11 @@ final class Notebook {
         return manager
     }()
 
+    /// For the Undo and Redo buttons. `UndoManager` itself is not observable, so these are
+    /// refreshed from its notifications, which also covers Cmd+Z and shake to undo.
+    private(set) var canUndo = false
+    private(set) var canRedo = false
+
     /// Pages whose drawing changed since it was last written. Autosave (step 6) reads this.
     private(set) var dirtyPageIDs: Set<UUID> = []
 
@@ -44,6 +49,20 @@ final class Notebook {
     init(package: NotebookPackage, meta: NotebookMeta) {
         self.package = package
         self.meta = meta
+        // No observer cleanup needed: the observers are tied to this notebook's own
+        // UndoManager and only hold `self` weakly.
+        for name in [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange,
+                     .NSUndoManagerDidCloseUndoGroup] {
+            NotificationCenter.default.addObserver(forName: name, object: undoManager, queue: nil) {
+                [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshUndoState() }
+            }
+        }
+    }
+
+    private func refreshUndoState() {
+        canUndo = undoManager.canUndo
+        canRedo = undoManager.canRedo
     }
 
     static func open(_ package: NotebookPackage) throws -> Notebook {

@@ -7,7 +7,13 @@ struct RootView: View {
     @State private var session = WindowSession()
 
     var body: some View {
-        LibraryView()
-            .environment(session)
+        Group {
+            if let notebook = session.notebook {
+                EditorView(notebook: notebook)
+            } else {
+                LibraryView()
+            }
+        }
+        .environment(session)
     }
 }
