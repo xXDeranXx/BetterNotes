@@ -124,12 +124,7 @@ struct LibraryView: View {
     }
 
     private func reload() {
-        let contents = try? FileManager.default.contentsOfDirectory(
-            at: LibraryLocation.documents.root, includingPropertiesForKeys: nil,
-            options: .skipsHiddenFiles)
-        notebooks = (contents ?? [])
-            .filter { $0.pathExtension == NotebookPackage.fileExtension }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        notebooks = LibraryLocation.documents.notebookURLs()
     }
 
     private func createNotebook() {

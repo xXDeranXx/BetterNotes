@@ -35,4 +35,13 @@ nonisolated struct LibraryLocation {
                 to: root.appending(path: Self.placeholderName), options: .atomic)
         }
     }
+
+    /// The notebooks directly in the library, sorted by name. (Milestone 5 adds folders.)
+    func notebookURLs() -> [URL] {
+        let contents = try? FileManager.default.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
+        return (contents ?? [])
+            .filter { $0.pathExtension == NotebookPackage.fileExtension }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
 }

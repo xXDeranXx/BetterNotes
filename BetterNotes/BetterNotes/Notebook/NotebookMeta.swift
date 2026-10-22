@@ -102,6 +102,7 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
     case pagesCannotBeChanged
     case cannotDeleteAllPages
     case imageUnreadable
+    case sameNotebook
 
     var errorDescription: String? {
         switch self {
@@ -125,6 +126,8 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
             "A notebook needs at least one page. Add another page first, or delete the notebook."
         case .imageUnreadable:
             "This image could not be read."
+        case .sameNotebook:
+            "Choose a different notebook. To copy pages inside this notebook, use Duplicate."
         }
     }
 }

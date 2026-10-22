@@ -42,6 +42,21 @@ struct PageActions {
         attempt { try notebook.movePages(moving, toIndex: index) }
     }
 
+    /// Moves or copies pages into another notebook (see `PageTransfer`), then tells
+    /// `completion` what happened so the interface can confirm it.
+    func transfer(_ ids: Set<UUID>, to target: URL, move: Bool, completion: @escaping (String) -> Void) {
+        let name = target.deletingPathExtension().lastPathComponent
+        let count = ids.count
+        Task {
+            do {
+                try await PageTransfer.transfer(ids, from: notebook, toNotebookAt: target, move: move)
+                completion("\(move ? "Moved" : "Copied") \(count) \(count == 1 ? "page" : "pages") to \"\(name)\".")
+            } catch {
+                report(error.localizedDescription)
+            }
+        }
+    }
+
     func duplicate(_ ids: Set<UUID>) { attempt { _ = try notebook.duplicatePages(ids) } }
     func rotate(_ ids: Set<UUID>, by degrees: Int) { attempt { try notebook.rotatePages(ids, by: degrees) } }
     func delete(_ ids: Set<UUID>) { attempt { try notebook.deletePages(ids) } }

@@ -15,6 +15,8 @@ struct PageGridView: View {
     /// The page a drag is currently over, to show where it would land.
     @State private var dropTargetID: UUID?
     @State private var insertKind: InsertKind?
+    @State private var isChoosingTarget = false
+    @State private var confirmation: String?
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 18)]
 
@@ -36,6 +38,25 @@ struct PageGridView: View {
             .navigationTitle(isSelecting ? "\(selectedIDs.count) selected" : "Pages")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
+            .sheet(isPresented: $isChoosingTarget) {
+                TransferSheet(
+                    sourceURL: notebook.package.url, pageCount: selectedIDs.count,
+                    choose: { target, move in
+                        isChoosingTarget = false
+                        actions.transfer(selectedIDs, to: target, move: move) { message in
+                            confirmation = message
+                            selection = []
+                        }
+                    },
+                    cancel: { isChoosingTarget = false })
+            }
+            .alert("Done", isPresented: Binding(
+                get: { confirmation != nil }, set: { if !$0 { confirmation = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(confirmation ?? "")
+            }
             // New pages go after the last selected page, or at the end.
             .pageInsertion(kind: $insertKind, actions: actions, reveal: false) {
                 let selected = selectedIDs
@@ -129,6 +150,8 @@ struct PageGridView: View {
         Button("Rotate Right", systemImage: "rotate.right") { actions.rotate(ids, by: 90) }
             .disabled(!hasSelection)
         Spacer()
+        Button("Move or Copy to Notebook", systemImage: "arrowshape.turn.up.right") { isChoosingTarget = true }
+            .disabled(!hasSelection)
         Menu("Insert", systemImage: "doc.badge.plus") { InsertMenuItems(kind: $insertKind) }
         Button("Delete", systemImage: "trash", role: .destructive) {
             actions.delete(ids)
