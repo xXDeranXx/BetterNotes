@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 /// Everything that belongs to one window (SPEC, architecture decision 5): which notebook
 /// is open in it, and with that the notebook's model and undo history. Each window creates
@@ -22,6 +23,35 @@ final class WindowSession {
     /// its notebook. Its changes were saved when the app left the foreground.
     isolated deinit {
         if let claimedURL { registry.release(claimedURL) }
+    }
+
+    /// The cover that grows from its tile to the whole window while a notebook opens
+    /// (Goodnotes-style). `RootView` draws it above both the library and the editor.
+    struct CoverTransition {
+        var image: UIImage?
+        var from: CGRect
+        var expanded = false
+    }
+
+    private(set) var coverTransition: CoverTransition?
+
+    /// Opens a notebook with a zoom: the cover grows to fill the window first (nothing heavy
+    /// happens meanwhile, so the animation is smooth), then the notebook opens underneath it
+    /// where nobody sees the work, then the cover fades away.
+    func openZooming(_ package: NotebookPackage, from frame: CGRect, image: UIImage?) async throws {
+        if registry.isOpen(at: package.url) { throw NotebookError.alreadyOpen }
+        coverTransition = CoverTransition(image: image, from: frame)
+        try? await Task.sleep(for: .milliseconds(30))  // let the first frame (at the tile) draw
+        withAnimation(.smooth(duration: 0.32)) { coverTransition?.expanded = true }
+        try? await Task.sleep(for: .milliseconds(340))
+        do {
+            try open(package)
+        } catch {
+            withAnimation(.easeOut(duration: 0.2)) { coverTransition = nil }
+            throw error
+        }
+        try? await Task.sleep(for: .milliseconds(80))  // the editor lays itself out
+        withAnimation(.easeOut(duration: 0.25)) { coverTransition = nil }
     }
 
     func open(_ package: NotebookPackage) throws {

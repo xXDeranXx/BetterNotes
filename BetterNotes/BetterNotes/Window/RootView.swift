@@ -10,15 +10,11 @@ struct RootView: View {
         Group {
             if let notebook = session.notebook {
                 EditorView(notebook: notebook)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
                 LibraryView()
-                    .transition(.opacity)
             }
         }
-        // Opening or closing a notebook fades and eases in instead of cutting. SwiftUI animates
-        // the swap above whenever the value below changes (like a CSS transition in React).
-        .animation(.smooth(duration: 0.35), value: session.notebook != nil)
+        .overlay { CoverZoomView(session: session) }
         .environment(session)
         // "Open in BetterNotes" from the share sheet or the Files app arrives here as a URL.
         // Like a route change in a React app: the system hands the window a URL and the
@@ -33,6 +29,33 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(session.importError ?? "")
+        }
+    }
+}
+
+/// The page-colored cover that zooms from a notebook's tile to the whole window.
+private struct CoverZoomView: View {
+    let session: WindowSession
+
+    var body: some View {
+        if let transition = session.coverTransition {
+            GeometryReader { proxy in
+                let origin = proxy.frame(in: .global).origin
+                let full = CGRect(origin: .zero, size: proxy.size)
+                let rect = transition.expanded ? full : transition.from.offsetBy(dx: -origin.x, dy: -origin.y)
+                ZStack {
+                    Color.white
+                    if let image = transition.image {
+                        Image(uiImage: image).resizable().scaledToFit()
+                    }
+                }
+                .frame(width: rect.width, height: rect.height)
+                .clipShape(RoundedRectangle(cornerRadius: transition.expanded ? 0 : 10))
+                .shadow(color: .black.opacity(transition.expanded ? 0 : 0.25), radius: 8, y: 4)
+                .position(x: rect.midX, y: rect.midY)
+            }
+            .ignoresSafeArea()
+            .transition(.opacity)
         }
     }
 }

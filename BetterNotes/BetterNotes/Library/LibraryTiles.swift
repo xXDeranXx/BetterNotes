@@ -16,7 +16,7 @@ extension Color {
 
 /// Width of a tile's picture; the grid uses it as the column width.
 let libraryTileWidth: CGFloat = 170
-private let tileHeight: CGFloat = 220
+let libraryTileHeight: CGFloat = 220
 
 /// A notebook as the library shows it: the first page in a rounded card with a colored spine,
 /// the title and the date below, a star if it is a favorite.
@@ -36,7 +36,7 @@ struct NotebookTile: View {
                         .font(.largeTitle).foregroundStyle(.orange)
                 }
             }
-            .frame(width: libraryTileWidth, height: tileHeight)
+            .frame(width: libraryTileWidth, height: libraryTileHeight)
             .overlay(alignment: .leading) {
                 Rectangle().fill(Color(hex: notebook.coverColor)).frame(width: 8)
             }
@@ -76,7 +76,7 @@ struct FolderTile: View {
             Image(systemName: "folder.fill")
                 .font(.system(size: 110))
                 .foregroundStyle(Color.accentColor.opacity(0.85))
-                .frame(width: libraryTileWidth, height: tileHeight)
+                .frame(width: libraryTileWidth, height: libraryTileHeight)
                 .background(
                     RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(isDropTargeted ? 0.25 : 0)))
                 .overlay(

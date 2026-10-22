@@ -18,6 +18,7 @@ struct LibraryView: View {
     @State private var itemToTrash: (url: URL, name: String)?
     @State private var dropTargetFolder: URL?
     @State private var isConfirmingEmptyTrash = false
+    @State private var tileFrames = TileFrames()
     @State private var isTrashDropTargeted = false
 
     private enum NamePrompt: Identifiable {
@@ -88,22 +89,6 @@ struct LibraryView: View {
             Button("Cancel", role: .cancel) {}
             Button(promptButton) { commitPrompt() }
         }
-        .confirmationDialog(
-            "Move \"\(itemToTrash?.name ?? "")\" to the trash?",
-            isPresented: Binding(get: { itemToTrash != nil }, set: { if !$0 { itemToTrash = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Move to Trash", role: .destructive) {
-                if let url = itemToTrash?.url { Task { await model.trash(url) } }
-            }
-        } message: {
-            Text("You can put it back from the Trash for 30 days.")
-        }
-        .confirmationDialog("Delete everything in the trash permanently?", isPresented: $isConfirmingEmptyTrash, titleVisibility: .visible) {
-            Button("Empty Trash", role: .destructive) { Task { await model.emptyTrash() } }
-        } message: {
-            Text("This cannot be undone.")
-        }
         .alert("Something went wrong", isPresented: Binding(
             get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
         ) {
@@ -119,6 +104,12 @@ struct LibraryView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await model.reload() } }
         }
+    }
+
+    /// Confirmation for moving one tile to the trash, attached to that tile so the popover
+    /// points at it.
+    private func trashDialog(for url: URL, name: String) -> Binding<Bool> {
+        Binding(get: { itemToTrash?.url == url }, set: { if !$0 && itemToTrash?.url == url { itemToTrash = nil } })
     }
 
     private struct MoveRequest: Identifiable {
@@ -208,6 +199,9 @@ struct LibraryView: View {
                             FolderTile(folder: folder, isDropTargeted: dropTargetFolder == folder.url)
                         }
                         .buttonStyle(.plain)
+                        .confirmationDialog("Move \"\(folder.name)\" to the trash?", isPresented: trashDialog(for: folder.url, name: folder.name), titleVisibility: .visible) {
+                            Button("Move to Trash", role: .destructive) { Task { await model.trash(folder.url) } }
+                        } message: { Text("You can put it back from the Trash for 30 days.") }
                         .contextMenu { folderMenu(folder) }
                         .draggable(model.dragPayload(for: folder.url))
                         .dropDestination(for: String.self) { payloads, _ in
@@ -219,8 +213,16 @@ struct LibraryView: View {
                     ForEach(notebooks) { notebook in
                         Button { open(notebook) } label: {
                             NotebookTile(notebook: notebook, isFavorite: model.isFavorite(notebook))
+                                // Remember where the tile is, to zoom its cover open from there.
+                                // A plain class, so scrolling does not re-render the grid.
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                                    tileFrames.frames[notebook.url] = $0
+                                }
                         }
                         .buttonStyle(.plain)
+                        .confirmationDialog("Move \"\(notebook.title)\" to the trash?", isPresented: trashDialog(for: notebook.url, name: notebook.title), titleVisibility: .visible) {
+                            Button("Move to Trash", role: .destructive) { Task { await model.trash(notebook.url) } }
+                        } message: { Text("You can put it back from the Trash for 30 days.") }
                         .contextMenu { notebookMenu(notebook) }
                         .draggable(model.dragPayload(for: notebook.url))
                     }
@@ -262,6 +264,11 @@ struct LibraryView: View {
             if model.section == .trash {
                 Button("Empty Trash", role: .destructive) { isConfirmingEmptyTrash = true }
                     .disabled(model.trashed.isEmpty)
+                    .confirmationDialog("Delete everything in the trash permanently?", isPresented: $isConfirmingEmptyTrash, titleVisibility: .visible) {
+                        Button("Empty Trash", role: .destructive) { Task { await model.emptyTrash() } }
+                    } message: {
+                        Text("This cannot be undone.")
+                    }
             } else {
                 Menu {
                     Picker("Sort by", selection: Binding(get: { model.index.sortKey }, set: {
@@ -373,11 +380,22 @@ struct LibraryView: View {
             model.errorMessage = "\"\(notebook.title)\" cannot be opened: \(problem)"
             return
         }
-        do {
-            try session.open(NotebookPackage(url: notebook.url))
-            model.recordOpened(notebook)
-        } catch {
-            model.errorMessage = error.localizedDescription
+        guard session.coverTransition == nil else { return }  // a second tap while zooming
+        let package = NotebookPackage(url: notebook.url)
+        model.recordOpened(notebook)
+        guard let tile = tileFrames.frames[notebook.url] else {
+            do { try session.open(package) } catch { model.errorMessage = error.localizedDescription }
+            return
+        }
+        // The cover part of the tile (the picture above the title).
+        let cover = CGRect(x: tile.midX - libraryTileWidth / 2, y: tile.minY, width: libraryTileWidth, height: libraryTileHeight)
+        Task {
+            let image = await CoverStore.shared.image(for: notebook)
+            do {
+                try await session.openZooming(package, from: cover, image: image)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -420,6 +438,12 @@ struct LibraryView: View {
         }
         return true
     }
+}
+
+/// Where each notebook tile is on screen. A class on purpose: writing into it while scrolling
+/// does not make SwiftUI redraw anything.
+final class TileFrames {
+    var frames: [URL: CGRect] = [:]
 }
 
 #Preview {
