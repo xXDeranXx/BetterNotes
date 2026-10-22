@@ -14,6 +14,7 @@ struct PageGridView: View {
     @State private var selection: Set<UUID> = []
     /// The page a drag is currently over, to show where it would land.
     @State private var dropTargetID: UUID?
+    @State private var insertKind: InsertKind?
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 18)]
 
@@ -35,6 +36,14 @@ struct PageGridView: View {
             .navigationTitle(isSelecting ? "\(selectedIDs.count) selected" : "Pages")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
+            // New pages go after the last selected page, or at the end.
+            .pageInsertion(kind: $insertKind, actions: actions, reveal: false) {
+                let selected = selectedIDs
+                guard let last = notebook.pages.lastIndex(where: { selected.contains($0.id) }) else {
+                    return notebook.pages.count
+                }
+                return last + 1
+            }
         }
     }
 
@@ -100,6 +109,7 @@ struct PageGridView: View {
             } else {
                 AddPageButton(actions: actions)
                 Spacer()
+                Menu("Insert", systemImage: "doc.badge.plus") { InsertMenuItems(kind: $insertKind) }
             }
         }
     }
@@ -119,6 +129,7 @@ struct PageGridView: View {
         Button("Rotate Right", systemImage: "rotate.right") { actions.rotate(ids, by: 90) }
             .disabled(!hasSelection)
         Spacer()
+        Menu("Insert", systemImage: "doc.badge.plus") { InsertMenuItems(kind: $insertKind) }
         Button("Delete", systemImage: "trash", role: .destructive) {
             actions.delete(ids)
             selection = []

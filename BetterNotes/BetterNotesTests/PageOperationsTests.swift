@@ -398,6 +398,25 @@ struct PageOperationsTests {
         expectConsistent(reopened)
     }
 
+    @Test func pagesInsertedFromAnotherPDFSurviveSavingAfterTheSourceIsGone() async throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder, pageCount: 2)
+        let other = try makeLabeledPDF(in: folder.url, name: "other.pdf", labels: ["A", "B"])
+        // The app reads the file into memory and lets the source document go (see PageActions).
+        func insertAndLetTheSourceGo() throws {
+            let source = try #require(PDFDocument(data: try Data(contentsOf: other)))
+            try notebook.insertPages(try Notebook.makeEntries(from: source), at: 1)
+        }
+        try insertAndLetTheSourceGo()
+        try FileManager.default.removeItem(at: other)  // not even the file is left
+
+        await notebook.saveChanges()
+
+        let reopened = try Notebook.open(notebook.package)
+        #expect(labels(reopened) == ["P1", "A", "B", "P2"])
+        expectConsistent(reopened)
+    }
+
     @Test func aFailedPageSaveKeepsTheOldFilesMatchingAndTheChangePending() async throws {
         let folder = try TempFolder()
         let notebook = try makeOpenNotebook(in: folder, pageCount: 2)

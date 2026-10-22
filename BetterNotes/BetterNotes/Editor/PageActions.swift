@@ -8,7 +8,7 @@ struct PageActions {
     let navigator: PageNavigator
     let report: (String) -> Void
 
-    private func attempt(_ work: () throws -> Void) {
+    func attempt(_ work: () throws -> Void) {
         do { try work() } catch { report(error.localizedDescription) }
     }
 

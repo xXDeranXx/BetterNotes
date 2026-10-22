@@ -31,6 +31,7 @@ struct EditorView: View {
     @State private var isSidebarVisible = true
     @State private var pageError: String?
     @State private var isShowingGrid = false
+    @State private var insertKind: InsertKind?
 
     init(notebook: Notebook) {
         self.notebook = notebook
@@ -70,6 +71,13 @@ struct EditorView: View {
                     // Leaving the foreground (home, app switcher, locking): save right away.
                     if phase != .active { BackgroundSave.flush(notebook) }
                 }
+                // New pages go after the page that is on screen, or at the end.
+                .pageInsertion(kind: $insertKind, actions: actions, reveal: true) {
+                    guard let current = navigator.currentPageID,
+                        let index = notebook.pages.firstIndex(where: { $0.id == current })
+                    else { return notebook.pages.count }
+                    return index + 1
+                }
                 .alert("Could not change the pages", isPresented: Binding(
                     get: { pageError != nil }, set: { if !$0 { pageError = nil } })
                 ) {
@@ -93,6 +101,7 @@ struct EditorView: View {
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button("Page Grid", systemImage: "square.grid.2x2") { isShowingGrid = true }
+                        Menu("Insert", systemImage: "doc.badge.plus") { InsertMenuItems(kind: $insertKind) }
                         Button("Add Page", systemImage: "plus.square") { actions.addPageAtEnd() }
                         Button("Search", systemImage: "magnifyingglass") {
                             if isSearching { search.clear() }
