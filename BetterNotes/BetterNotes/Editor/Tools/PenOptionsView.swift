@@ -228,6 +228,7 @@ struct ToolbarSettingsView: View {
                 }
                 Section("Gestures") {
                     Toggle("Draw with a finger", isOn: $tools.settings.allowsFingerDrawing)
+                    Toggle("Left-handed (palette opens to the right)", isOn: $tools.settings.isLeftHanded)
                     Toggle("Two-finger tap = undo", isOn: $tools.settings.twoFingerTapUndoes)
                     Toggle("Three-finger tap = redo", isOn: $tools.settings.threeFingerTapRedoes)
                 }

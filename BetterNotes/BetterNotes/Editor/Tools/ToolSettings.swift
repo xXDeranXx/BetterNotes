@@ -115,6 +115,8 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
     var isToolbarCollapsed = false
     /// Off by default: the Pencil writes, fingers scroll (SPEC).
     var allowsFingerDrawing = false
+    /// The palette opens to the right of the Pencil for left-handed writers, to the left otherwise.
+    var isLeftHanded = true
     var twoFingerTapUndoes = true
     var threeFingerTapRedoes = true
     /// Keep the system tool picker instead of the own toolbar, until the toolbar is trusted.
@@ -124,7 +126,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case version, selected, pens, enabledPens, favoriteColors, presets, eraserMode, eraserWidth
-        case toolbarPosition, isToolbarCollapsed, allowsFingerDrawing, twoFingerTapUndoes
+        case toolbarPosition, isToolbarCollapsed, allowsFingerDrawing, isLeftHanded, twoFingerTapUndoes
         case threeFingerTapRedoes, usesSystemToolPicker
     }
 
@@ -147,6 +149,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         toolbarPosition = value(.toolbarPosition) ?? toolbarPosition
         isToolbarCollapsed = value(.isToolbarCollapsed) ?? isToolbarCollapsed
         allowsFingerDrawing = value(.allowsFingerDrawing) ?? allowsFingerDrawing
+        isLeftHanded = value(.isLeftHanded) ?? isLeftHanded
         twoFingerTapUndoes = value(.twoFingerTapUndoes) ?? twoFingerTapUndoes
         threeFingerTapRedoes = value(.threeFingerTapRedoes) ?? threeFingerTapRedoes
         usesSystemToolPicker = value(.usesSystemToolPicker) ?? usesSystemToolPicker
@@ -166,6 +169,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         try c.encode(toolbarPosition, forKey: .toolbarPosition)
         try c.encode(isToolbarCollapsed, forKey: .isToolbarCollapsed)
         try c.encode(allowsFingerDrawing, forKey: .allowsFingerDrawing)
+        try c.encode(isLeftHanded, forKey: .isLeftHanded)
         try c.encode(twoFingerTapUndoes, forKey: .twoFingerTapUndoes)
         try c.encode(threeFingerTapRedoes, forKey: .threeFingerTapRedoes)
         try c.encode(usesSystemToolPicker, forKey: .usesSystemToolPicker)

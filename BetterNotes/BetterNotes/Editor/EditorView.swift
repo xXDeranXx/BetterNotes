@@ -12,7 +12,10 @@ struct NotebookEditor: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
         let controller = NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
-        controller.onPencilAction = { [tools] action, position in tools.perform(action, at: position) }
+        controller.tools = tools
+        controller.onPencilAction = { [tools, weak controller] action, position in
+            if tools.perform(action) { controller?.presentPalette(at: position) }
+        }
         return controller
     }
 
@@ -74,19 +77,6 @@ struct EditorView: View {
                     isToolPickerHidden: isShowingGrid)
                     .overlay(alignment: toolbarAlignment) {
                         if !tools.settings.usesSystemToolPicker { PenToolbar(tools: tools) }
-                    }
-                    // The Pencil's squeeze opens the palette where the Pencil is: an invisible
-                    // one-point view at that spot is what the popover points at.
-                    .overlay(alignment: .topLeading) {
-                        GeometryReader { geometry in
-                            let fallback = CGPoint(x: geometry.size.width / 2, y: 60)
-                            Color.clear.frame(width: 1, height: 1)
-                                .position(tools.palettePosition ?? fallback)
-                                .popover(isPresented: $tools.isPalettePresented) {
-                                    PenOptionsView(tools: tools, kind: tools.currentPen)
-                                }
-                        }
-                        .allowsHitTesting(false)
                     }
             }
                 .ignoresSafeArea(edges: .bottom)

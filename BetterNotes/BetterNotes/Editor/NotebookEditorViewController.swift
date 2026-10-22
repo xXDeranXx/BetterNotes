@@ -1,5 +1,6 @@
 import PDFKit
 import PencilKit
+import SwiftUI
 import UIKit
 
 /// The root view of the editor. It is the long-lived first responder:
@@ -28,7 +29,10 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     private let navigator: PageNavigator
     private var didSetZoomLimits = false
     private var isToolPickerHidden = false
-    private var tools = ToolSettings()
+    private var toolSettings = ToolSettings()
+    var tools: ToolController?
+    /// Where the Pencil hovered last, for when the squeeze itself carries no position.
+    private var lastHover: CGPoint?
     /// The editor view forwards the Pencil's squeeze and double tap to the toolbar.
     var onPencilAction: ((UIPencilPreferredAction, CGPoint?) -> Void)?
     /// The "fit to width" zoom the last time the pages were laid out. It changes when a page
@@ -149,7 +153,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     }
 
     func applyTools(_ settings: ToolSettings, isRulerActive: Bool) {
-        tools = settings
+        toolSettings = settings
         coordinator.apply(settings: settings, isRulerActive: isRulerActive)
         updateToolPickerVisibility()
     }
@@ -174,14 +178,39 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             view.addGestureRecognizer(tap)
         }
         view.addInteraction(UIPencilInteraction(delegate: self))
+        // Tracks the hovering Pencil (iPads that support hover) so the palette can open at its tip.
+        let hover = UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:)))
+        hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        hover.delegate = self
+        view.addGestureRecognizer(hover)
+    }
+
+    @objc private func hovered(_ hover: UIHoverGestureRecognizer) {
+        lastHover = hover.state == .ended || hover.state == .cancelled ? lastHover : hover.location(in: view)
+    }
+
+    /// Opens the pen's color and width as a popover at the Pencil, to the right of it for
+    /// left-handed writers (so the hand does not cover it) and to the left otherwise.
+    func presentPalette(at position: CGPoint?) {
+        guard let tools, presentedViewController == nil else { return }
+        let anchor = position ?? lastHover ?? CGPoint(x: view.bounds.midX, y: 80)
+        let content = UIHostingController(rootView: PenOptionsView(tools: tools, kind: tools.currentPen))
+        content.modalPresentationStyle = .popover
+        content.preferredContentSize = content.sizeThatFits(in: CGSize(width: 320, height: 700))
+        if let popover = content.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(origin: anchor, size: CGSize(width: 1, height: 1))
+            popover.permittedArrowDirections = toolSettings.isLeftHanded ? .left : .right
+        }
+        present(content, animated: true)
     }
 
     @objc private func undoTapped() {
-        if tools.twoFingerTapUndoes, notebook.undoManager.canUndo { notebook.undoManager.undo() }
+        if toolSettings.twoFingerTapUndoes, notebook.undoManager.canUndo { notebook.undoManager.undo() }
     }
 
     @objc private func redoTapped() {
-        if tools.threeFingerTapRedoes, notebook.undoManager.canRedo { notebook.undoManager.redo() }
+        if toolSettings.threeFingerTapRedoes, notebook.undoManager.canRedo { notebook.undoManager.redo() }
     }
 
     // The taps must not stop scrolling and zooming, which also use two fingers.

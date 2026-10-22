@@ -14,11 +14,6 @@ final class ToolController {
     }
     /// The straight-edge ruler is a switch on the canvas, not a tool, and is not remembered.
     var isRulerActive = false
-    /// Shown by the Pencil's squeeze or double tap ("show color palette").
-    var isPalettePresented = false
-    /// Where the Pencil was when it was squeezed (in the editor's coordinates), so the palette
-    /// opens next to it. `nil` = no position known.
-    var palettePosition: CGPoint?
 
     @ObservationIgnored private let store: ToolSettingsStore
     /// The pen that was selected before the eraser was switched on, for "switch to previous".
@@ -40,17 +35,20 @@ final class ToolController {
     // MARK: The Pencil
 
     /// What squeeze and double tap do, following the setting the user made in iPadOS Settings.
-    func perform(_ action: UIPencilPreferredAction, at position: CGPoint? = nil) {
+    /// Returns `true` when the action is "show the palette", which the editor then opens next to
+    /// the Pencil (a popover needs a view to point at, so it is not decided here).
+    @discardableResult
+    func perform(_ action: UIPencilPreferredAction) -> Bool {
         switch action {
         case .switchEraser:
             if settings.selected == .eraser { select(toolBeforeEraser ?? .pen(settings.enabledPens[0])) } else { select(.eraser) }
         case .switchPrevious:
             if let previous = toolBeforeEraser { let now = settings.selected; settings.selected = previous; toolBeforeEraser = now }
         case .showColorPalette, .showInkAttributes, .showContextualPalette:
-            palettePosition = position
-            isPalettePresented = true
+            return true
         default:
             break  // ignore, run system shortcut, and anything newer: nothing to do
         }
+        return false
     }
 }
