@@ -1,0 +1,562 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		B76EDCFD308A7218000F59AB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B76EDCE7308A7217000F59AB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B76EDCEE308A7217000F59AB;
+			remoteInfo = BetterNotes;
+		};
+		B76EDD07308A7218000F59AB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B76EDCE7308A7217000F59AB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B76EDCEE308A7217000F59AB;
+			remoteInfo = BetterNotes;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B76EDCEF308A7217000F59AB /* BetterNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BetterNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B76EDCFC308A7218000F59AB /* BetterNotesTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BetterNotesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B76EDD06308A7218000F59AB /* BetterNotesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BetterNotesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B76EDCF1308A7217000F59AB /* BetterNotes */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BetterNotes;
+			sourceTree = "<group>";
+		};
+		B76EDCFF308A7218000F59AB /* BetterNotesTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BetterNotesTests;
+			sourceTree = "<group>";
+		};
+		B76EDD09308A7218000F59AB /* BetterNotesUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BetterNotesUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B76EDCEC308A7217000F59AB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		B76EDCF9308A7218000F59AB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		B76EDD03308A7218000F59AB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B76EDCE6308A7217000F59AB = {
+			isa = PBXGroup;
+			children = (
+				B76EDCF1308A7217000F59AB /* BetterNotes */,
+				B76EDCFF308A7218000F59AB /* BetterNotesTests */,
+				B76EDD09308A7218000F59AB /* BetterNotesUITests */,
+				B76EDCF0308A7217000F59AB /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B76EDCF0308A7217000F59AB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B76EDCEF308A7217000F59AB /* BetterNotes.app */,
+				B76EDCFC308A7218000F59AB /* BetterNotesTests.xctest */,
+				B76EDD06308A7218000F59AB /* BetterNotesUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B76EDCEE308A7217000F59AB /* BetterNotes */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B76EDD0E308A7218000F59AB /* Build configuration list for PBXNativeTarget "BetterNotes" */;
+			buildPhases = (
+				B76EDCEB308A7217000F59AB /* Sources */,
+				B76EDCEC308A7217000F59AB /* Frameworks */,
+				B76EDCED308A7217000F59AB /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				B76EDCF1308A7217000F59AB /* BetterNotes */,
+			);
+			name = BetterNotes;
+			productName = BetterNotes;
+			productReference = B76EDCEF308A7217000F59AB /* BetterNotes.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B76EDCFB308A7218000F59AB /* BetterNotesTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B76EDD11308A7218000F59AB /* Build configuration list for PBXNativeTarget "BetterNotesTests" */;
+			buildPhases = (
+				B76EDCF8308A7218000F59AB /* Sources */,
+				B76EDCF9308A7218000F59AB /* Frameworks */,
+				B76EDCFA308A7218000F59AB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B76EDCFE308A7218000F59AB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B76EDCFF308A7218000F59AB /* BetterNotesTests */,
+			);
+			name = BetterNotesTests;
+			productName = BetterNotesTests;
+			productReference = B76EDCFC308A7218000F59AB /* BetterNotesTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B76EDD05308A7218000F59AB /* BetterNotesUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B76EDD14308A7218000F59AB /* Build configuration list for PBXNativeTarget "BetterNotesUITests" */;
+			buildPhases = (
+				B76EDD02308A7218000F59AB /* Sources */,
+				B76EDD03308A7218000F59AB /* Frameworks */,
+				B76EDD04308A7218000F59AB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B76EDD08308A7218000F59AB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B76EDD09308A7218000F59AB /* BetterNotesUITests */,
+			);
+			name = BetterNotesUITests;
+			productName = BetterNotesUITests;
+			productReference = B76EDD06308A7218000F59AB /* BetterNotesUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B76EDCE7308A7217000F59AB /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					B76EDCEE308A7217000F59AB = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					B76EDCFB308A7218000F59AB = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = B76EDCEE308A7217000F59AB;
+					};
+					B76EDD05308A7218000F59AB = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = B76EDCEE308A7217000F59AB;
+					};
+				};
+			};
+			buildConfigurationList = B76EDCEA308A7217000F59AB /* Build configuration list for PBXProject "BetterNotes" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B76EDCE6308A7217000F59AB;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B76EDCF0308A7217000F59AB /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B76EDCEE308A7217000F59AB /* BetterNotes */,
+				B76EDCFB308A7218000F59AB /* BetterNotesTests */,
+				B76EDD05308A7218000F59AB /* BetterNotesUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B76EDCED308A7217000F59AB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		B76EDCFA308A7218000F59AB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		B76EDD04308A7218000F59AB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B76EDCEB308A7217000F59AB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		B76EDCF8308A7218000F59AB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		B76EDD02308A7218000F59AB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B76EDCFE308A7218000F59AB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B76EDCEE308A7217000F59AB /* BetterNotes */;
+			targetProxy = B76EDCFD308A7218000F59AB /* PBXContainerItemProxy */;
+		};
+		B76EDD08308A7218000F59AB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B76EDCEE308A7217000F59AB /* BetterNotes */;
+			targetProxy = B76EDD07308A7218000F59AB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B76EDD0C308A7218000F59AB /* Debug configuration for PBXProject "BetterNotes" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B76EDD0D308A7218000F59AB /* Release configuration for PBXProject "BetterNotes" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B76EDD0F308A7218000F59AB /* Debug configuration for PBXNativeTarget "BetterNotes" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.anvu.BetterNotes;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Debug;
+		};
+		B76EDD10308A7218000F59AB /* Release configuration for PBXNativeTarget "BetterNotes" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.anvu.BetterNotes;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Release;
+		};
+		B76EDD12308A7218000F59AB /* Debug configuration for PBXNativeTarget "BetterNotesTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.anvu.BetterNotesTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BetterNotes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BetterNotes";
+			};
+			name = Debug;
+		};
+		B76EDD13308A7218000F59AB /* Release configuration for PBXNativeTarget "BetterNotesTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.anvu.BetterNotesTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BetterNotes.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BetterNotes";
+			};
+			name = Release;
+		};
+		B76EDD15308A7218000F59AB /* Debug configuration for PBXNativeTarget "BetterNotesUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.anvu.BetterNotesUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = BetterNotes;
+			};
+			name = Debug;
+		};
+		B76EDD16308A7218000F59AB /* Release configuration for PBXNativeTarget "BetterNotesUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6HRRWAU9XJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.anvu.BetterNotesUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = BetterNotes;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B76EDCEA308A7217000F59AB /* Build configuration list for PBXProject "BetterNotes" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B76EDD0C308A7218000F59AB /* Debug configuration for PBXProject "BetterNotes" */,
+				B76EDD0D308A7218000F59AB /* Release configuration for PBXProject "BetterNotes" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		B76EDD0E308A7218000F59AB /* Build configuration list for PBXNativeTarget "BetterNotes" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B76EDD0F308A7218000F59AB /* Debug configuration for PBXNativeTarget "BetterNotes" */,
+				B76EDD10308A7218000F59AB /* Release configuration for PBXNativeTarget "BetterNotes" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		B76EDD11308A7218000F59AB /* Build configuration list for PBXNativeTarget "BetterNotesTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B76EDD12308A7218000F59AB /* Debug configuration for PBXNativeTarget "BetterNotesTests" */,
+				B76EDD13308A7218000F59AB /* Release configuration for PBXNativeTarget "BetterNotesTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		B76EDD14308A7218000F59AB /* Build configuration list for PBXNativeTarget "BetterNotesUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B76EDD15308A7218000F59AB /* Debug configuration for PBXNativeTarget "BetterNotesUITests" */,
+				B76EDD16308A7218000F59AB /* Release configuration for PBXNativeTarget "BetterNotesUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B76EDCE7308A7217000F59AB /* Project object */;
+	validationLevel = 1;
+}
