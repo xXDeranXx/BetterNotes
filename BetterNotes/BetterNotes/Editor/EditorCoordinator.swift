@@ -62,6 +62,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         guard let pageID = pageID(for: page) else { return nil }
         let overlay = PageOverlayView(pageID: pageID)
         overlay.canvas.delegate = self
+        overlay.renderScale = Self.renderScale(zoom: zoom)
         return overlay
     }
 
@@ -92,11 +93,15 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
 
     func overlayDidAppear(_ overlay: PageOverlayView) {
         visibleOverlays[overlay.pageID] = overlay
+        // The canvas must have its final size and zoom BEFORE it gets a drawing: PencilKit does
+        // not redraw a drawing that was set before the canvas was magnified (the ink then
+        // stayed invisible after reopening a notebook).
+        applyRenderScale(to: overlay)
+        overlay.layoutIfNeeded()
         // The model may have changed while this page was off screen (undo), so always
         // load from the model, never trust what the canvas still holds.
         show(notebook.drawing(for: overlay.pageID), in: overlay.canvas)
         toolPicker.addObserver(overlay.canvas)
-        applyRenderScale(to: overlay)
     }
 
     func overlayDidDisappear(_ overlay: PageOverlayView) {

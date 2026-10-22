@@ -4,6 +4,14 @@ import Testing
 import UIKit
 @testable import BetterNotes
 
+/// Records the canvas's zoom at the moment its drawing is assigned (PencilKit calls the
+/// delegate synchronously when code sets `canvas.drawing`).
+@MainActor
+private final class ZoomAtAssignmentSpy: NSObject, PKCanvasViewDelegate {
+    var zoomScales: [CGFloat] = []
+    func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) { zoomScales.append(canvasView.zoomScale) }
+}
+
 /// Tests with real `PKCanvasView`s (they work without a window).
 @MainActor
 struct EditorCoordinatorTests {
@@ -174,5 +182,22 @@ struct EditorCoordinatorTests {
         #expect(overlay.canvas.zoomScale == 3)
         // A point in page coordinates is where the drawing keeps it, whatever the render scale.
         #expect(overlay.canvas.convert(CGPoint(x: 300, y: 400), from: overlay.canvas) == CGPoint(x: 300, y: 400))
+    }
+
+    @Test func aSavedDrawingIsAssignedOnlyAfterTheCanvasHasItsFinalZoom() throws {
+        // Regression: when the drawing was assigned first and the canvas magnified afterwards,
+        // PencilKit left the ink invisible after reopening a notebook (found with a UI test).
+        let setup = try makeSetup()
+        setup.notebook.setDrawing(sampleDrawing(), for: setup.pageA)
+        setup.coordinator.zoomDidChange(to: 3)
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.frame = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let spy = ZoomAtAssignmentSpy()
+        overlay.canvas.delegate = spy
+
+        setup.coordinator.overlayDidAppear(overlay)
+
+        #expect(overlay.canvas.drawing.strokes.count == 1)
+        #expect(spy.zoomScales == [3])  // assigned once, and already at the final zoom
     }
 }
