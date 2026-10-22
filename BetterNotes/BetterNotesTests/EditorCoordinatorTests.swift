@@ -267,4 +267,43 @@ struct EditorCoordinatorTests {
         #expect(EditorCoordinator.renderScale(zoom: 1.2, cap: 2) == 2)
         #expect(EditorCoordinator.renderScale(zoom: 0.4, cap: 1) == 1)
     }
+
+    // MARK: Toolbar tools
+
+    @Test func theToolbarsToolReachesVisibleAndLaterCanvases() throws {
+        let setup = try makeSetup()
+        let first = PageOverlayView(pageID: setup.pageA)
+        setup.coordinator.overlayDidAppear(first)
+
+        var settings = ToolSettings()
+        settings.selected = .pen(.fountainPen)
+        settings.setColor("#1E5BFF", for: .fountainPen)
+        setup.coordinator.apply(settings: settings, isRulerActive: true)
+
+        let later = PageOverlayView(pageID: setup.pageB)  // scrolls in after the change
+        setup.coordinator.overlayDidAppear(later)
+
+        for overlay in [first, later] {
+            let pen = try #require(overlay.canvas.tool as? PKInkingTool)
+            #expect(pen.inkType == .fountainPen)
+            #expect(HexColor.hex(of: pen.color) == "#1E5BFF")
+            #expect(overlay.canvas.isRulerActive)
+        }
+    }
+
+    @Test func switchingToTheEraserChangesEveryCanvas() throws {
+        let setup = try makeSetup()
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        setup.coordinator.overlayDidAppear(overlay)
+
+        var settings = ToolSettings()
+        settings.selected = .eraser
+        settings.eraserMode = .stroke
+        setup.coordinator.apply(settings: settings, isRulerActive: false)
+        #expect((overlay.canvas.tool as? PKEraserTool)?.eraserType == .vector)
+
+        settings.selected = .lasso
+        setup.coordinator.apply(settings: settings, isRulerActive: false)
+        #expect(overlay.canvas.tool is PKLassoTool)
+    }
 }

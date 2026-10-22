@@ -7,15 +7,19 @@ struct NotebookEditor: UIViewControllerRepresentable {
     let notebook: Notebook
     let search: DocumentSearch
     let navigator: PageNavigator
+    let tools: ToolController
     var isToolPickerHidden = false
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
-        NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
+        let controller = NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
+        controller.onPencilAction = { [tools] action in tools.perform(action) }
+        return controller
     }
 
     // SwiftUI calls this whenever a value above changes: the way to push state into UIKit.
     func updateUIViewController(_ controller: NotebookEditorViewController, context: Context) {
         controller.setToolPickerHidden(isToolPickerHidden)
+        controller.applyTools(tools.settings, isRulerActive: tools.isRulerActive)
     }
 }
 
@@ -33,11 +37,20 @@ struct EditorView: View {
     @State private var isShowingGrid = false
     @State private var insertKind: InsertKind?
     @State private var isExporting = false
+    @State private var tools = ToolController()
 
     init(notebook: Notebook) {
         self.notebook = notebook
         _thumbnails = State(initialValue: ThumbnailStore(notebook: notebook))
         _navigator = State(initialValue: PageNavigator(notebook: notebook))
+    }
+
+    private var toolbarAlignment: Alignment {
+        switch tools.settings.toolbarPosition {
+        case .top: .top
+        case .leading: .leading
+        case .trailing: .trailing
+        }
     }
 
     private var actions: PageActions {
@@ -57,7 +70,11 @@ struct EditorView: View {
                     .transition(.move(edge: .leading))  // slides in and out instead of popping
                 }
                 NotebookEditor(
-                    notebook: notebook, search: search, navigator: navigator, isToolPickerHidden: isShowingGrid)
+                    notebook: notebook, search: search, navigator: navigator, tools: tools,
+                    isToolPickerHidden: isShowingGrid)
+                    .overlay(alignment: toolbarAlignment) {
+                        if !tools.settings.usesSystemToolPicker { PenToolbar(tools: tools) }
+                    }
             }
                 .ignoresSafeArea(edges: .bottom)
                 .safeAreaInset(edge: .top, spacing: 0) {

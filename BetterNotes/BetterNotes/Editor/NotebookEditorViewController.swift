@@ -20,7 +20,7 @@ final class UndoRoutingView: UIView {
 }
 
 /// Shows a notebook's PDF with a canvas over every visible page.
-final class NotebookEditorViewController: UIViewController {
+final class NotebookEditorViewController: UIViewController, UIGestureRecognizerDelegate, UIPencilInteractionDelegate {
     private let notebook: Notebook
     private let coordinator: EditorCoordinator
     private let pdfView = PDFView()
@@ -28,6 +28,9 @@ final class NotebookEditorViewController: UIViewController {
     private let navigator: PageNavigator
     private var didSetZoomLimits = false
     private var isToolPickerHidden = false
+    private var tools = ToolSettings()
+    /// The editor view forwards the Pencil's squeeze and double tap to the toolbar.
+    var onPencilAction: ((UIPencilPreferredAction) -> Void)?
     /// The "fit to width" zoom the last time the pages were laid out. It changes when a page
     /// operation changes the widest page (turning a page sideways), see `refitIfPagesChangedWidth`.
     private var lastFitScale: CGFloat = 0
@@ -56,6 +59,8 @@ final class NotebookEditorViewController: UIViewController {
             showProblem(notebook.structureProblem ?? "This notebook cannot be opened.")
             return
         }
+
+        installGestures()
 
         pdfView.frame = view.bounds
         pdfView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -122,7 +127,7 @@ final class NotebookEditorViewController: UIViewController {
         super.viewDidAppear(animated)
         // First responder only works once the view is in a window.
         view.becomeFirstResponder()
-        coordinator.toolPicker.setVisible(!isToolPickerHidden, forFirstResponder: view)
+        coordinator.toolPicker.setVisible(showsSystemToolPicker, forFirstResponder: view)
     }
 
     /// The tool palette floats above everything in the window, also above a full-screen page
@@ -130,14 +135,66 @@ final class NotebookEditorViewController: UIViewController {
     func setToolPickerHidden(_ hidden: Bool) {
         guard hidden != isToolPickerHidden else { return }
         isToolPickerHidden = hidden
+        updateToolPickerVisibility()
+    }
+
+    /// The system picker is only shown when the user chose it in the toolbar settings; the own
+    /// toolbar is SwiftUI and lives in `EditorView`.
+    private var showsSystemToolPicker: Bool { !isToolPickerHidden && coordinator.usesSystemToolPicker }
+
+    private func updateToolPickerVisibility() {
         guard view.window != nil else { return }  // viewDidAppear applies it later
-        if !hidden { view.becomeFirstResponder() }
-        coordinator.toolPicker.setVisible(!hidden, forFirstResponder: view)
+        if showsSystemToolPicker { view.becomeFirstResponder() }
+        coordinator.toolPicker.setVisible(showsSystemToolPicker, forFirstResponder: view)
+    }
+
+    func applyTools(_ settings: ToolSettings, isRulerActive: Bool) {
+        tools = settings
+        coordinator.apply(settings: settings, isRulerActive: isRulerActive)
+        updateToolPickerVisibility()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         coordinator.toolPicker.setVisible(false, forFirstResponder: view)
+    }
+
+    // MARK: Gestures and the Pencil
+
+    /// Two-finger tap = undo, three-finger tap = redo (configurable), like Goodnotes. The Pencil's
+    /// squeeze and double tap are delivered by `UIPencilInteraction`; without the system tool
+    /// picker the app has to handle them itself.
+    private func installGestures() {
+        for (touches, action) in [(2, #selector(undoTapped)), (3, #selector(redoTapped))] {
+            let tap = UITapGestureRecognizer(target: self, action: action)
+            tap.numberOfTouchesRequired = touches
+            tap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]  // fingers only
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            view.addGestureRecognizer(tap)
+        }
+        view.addInteraction(UIPencilInteraction(delegate: self))
+    }
+
+    @objc private func undoTapped() {
+        if tools.twoFingerTapUndoes, notebook.undoManager.canUndo { notebook.undoManager.undo() }
+    }
+
+    @objc private func redoTapped() {
+        if tools.threeFingerTapRedoes, notebook.undoManager.canRedo { notebook.undoManager.redo() }
+    }
+
+    // The taps must not stop scrolling and zooming, which also use two fingers.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool { true }
+
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
+        onPencilAction?(UIPencilInteraction.preferredTapAction)
+    }
+
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        if squeeze.phase == .ended { onPencilAction?(UIPencilInteraction.preferredSqueezeAction) }
     }
 
     private func showProblem(_ message: String) {

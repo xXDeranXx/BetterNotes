@@ -18,6 +18,13 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     let toolPicker = PKToolPicker()
     private(set) var visibleOverlays: [UUID: PageOverlayView] = [:]
 
+    /// What the own toolbar has selected (`ToolController`), applied to every visible canvas and
+    /// to pages that scroll in later. Ignored while the system tool picker is in use.
+    private(set) var tool: PKTool = PKInkingTool(.pen, color: .black, width: 3)
+    private(set) var usesSystemToolPicker = false
+    private(set) var isRulerActive = false
+    private(set) var allowsFingerDrawing = false
+
     /// PDFKit gives every overlay the size of the page in points (595 x 842 for A4) at every
     /// zoom, and enlarges it from outside, so a canvas that renders at the page's own size
     /// looks soft when zoomed (see `PageOverlayView.renderScale`).
@@ -141,15 +148,41 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         // stayed invisible after reopening a notebook).
         applyRenderScale(to: overlay)
         overlay.layoutIfNeeded()
+        configure(overlay.canvas)
         // The model may have changed while this page was off screen (undo), so always
         // load from the model, never trust what the canvas still holds.
         show(notebook.drawing(for: overlay.pageID), in: overlay.canvas)
-        toolPicker.addObserver(overlay.canvas)
+        if usesSystemToolPicker { toolPicker.addObserver(overlay.canvas) }
+    }
+
+    // MARK: Tools
+
+    /// Called by the editor whenever the toolbar's settings change.
+    func apply(settings: ToolSettings, isRulerActive: Bool) {
+        let switchedPicker = settings.usesSystemToolPicker != usesSystemToolPicker
+        tool = settings.makeTool()
+        usesSystemToolPicker = settings.usesSystemToolPicker
+        allowsFingerDrawing = settings.allowsFingerDrawing
+        self.isRulerActive = isRulerActive
+        for overlay in visibleOverlays.values {
+            configure(overlay.canvas)
+            if switchedPicker {
+                if usesSystemToolPicker { toolPicker.addObserver(overlay.canvas) } else { toolPicker.removeObserver(overlay.canvas) }
+            }
+        }
+    }
+
+    private func configure(_ canvas: PKCanvasView) {
+        if !usesSystemToolPicker { canvas.tool = tool }
+        canvas.isRulerActive = isRulerActive
+        #if !targetEnvironment(simulator)
+        canvas.drawingPolicy = allowsFingerDrawing ? .anyInput : .pencilOnly
+        #endif
     }
 
     func overlayDidDisappear(_ overlay: PageOverlayView) {
         visibleOverlays[overlay.pageID] = nil
-        toolPicker.removeObserver(overlay.canvas)
+        if usesSystemToolPicker { toolPicker.removeObserver(overlay.canvas) }
         // SPEC, "Data safety": a changed page is also saved when its canvas leaves the screen.
         // Once that is done, drawings that are saved and off screen are dropped from memory.
         Task { [notebook] in
