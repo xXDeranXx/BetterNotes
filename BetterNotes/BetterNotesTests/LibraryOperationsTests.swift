@@ -98,7 +98,7 @@ struct LibraryOperationsTests {
         let first = try f.operations.createFolder(named: "Uni", in: f.root)
         let second = try f.operations.createFolder(named: "Uni", in: f.root)
         #expect(first.lastPathComponent == "Uni")
-        #expect(second.lastPathComponent == "Uni 2")
+        #expect(second.lastPathComponent == "Uni (2)")
     }
 
     @Test func renameNotebookChangesTitleAndFileName() throws {
@@ -129,7 +129,7 @@ struct LibraryOperationsTests {
 
         let renamed = try f.operations.rename(b.url, to: "A")
 
-        #expect(renamed.lastPathComponent == "A 2.inkbook")
+        #expect(renamed.lastPathComponent == "A (2).inkbook")
         #expect(exists(a.url))
     }
 
@@ -166,7 +166,7 @@ struct LibraryOperationsTests {
 
         let moved = try f.operations.move(incoming.url, into: folder)
 
-        #expect(moved.lastPathComponent == "Notes 2.inkbook")
+        #expect(moved.lastPathComponent == "Notes (2).inkbook")
         #expect(exists(existing.url))
     }
 

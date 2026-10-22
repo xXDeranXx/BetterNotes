@@ -127,8 +127,8 @@ struct NotebookPackageTests {
         let third = try makeNotebook(in: folder.url, title: "Notes")
 
         #expect(first.url.lastPathComponent == "Notes.inkbook")
-        #expect(second.url.lastPathComponent == "Notes 2.inkbook")
-        #expect(third.url.lastPathComponent == "Notes 3.inkbook")
+        #expect(second.url.lastPathComponent == "Notes (2).inkbook")
+        #expect(third.url.lastPathComponent == "Notes (3).inkbook")
         #expect(try first.readMeta().id != second.readMeta().id)
     }
 

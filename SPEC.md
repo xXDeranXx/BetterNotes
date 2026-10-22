@@ -144,6 +144,7 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 - Empty states, loading states, and error messages that say what happened and what to do; nothing is sent anywhere.
 
 ## Later, one at a time
+- **Tabs like Goodnotes** (wish from the developer, 2026-10-23): several notebooks open as tabs in one window, switching with one tap. **Heat is the main constraint** (see "M2, heat safeguard"). Rules for the design: only the active tab has a `PDFView`, canvases and render work; a background tab is saved, then released down to its title, scroll position and zoom (reopening is fast because notebooks load lazily); never keep several `PDFView`s alive for instant switching; thumbnail and cover rendering pause while the thermal state is `.serious`; limit the number of open tabs (about 5) and measure temperature and memory on the iPad with 2, 3 and 5 tabs before settling the limit. It touches architecture decision 5 (today a `WindowSession` holds one notebook), so it needs a short design discussion first; a tab strip also fits next to multiple windows (M9) rather than replacing them. Open question for then: tabs inside a window and the "one notebook, one window" rule must agree (a tab counts as open).
 - **Zoom window** for writing small text (like Goodnotes' zoom box).
 - **Audio recording** synced to the ink: tap a stroke to play from that moment. Feasible because `PKStrokePath` stores a creation date; recordings store their start time.
 - **Links** between pages and notebooks.

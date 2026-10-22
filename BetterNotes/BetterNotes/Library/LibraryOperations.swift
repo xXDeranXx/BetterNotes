@@ -97,7 +97,7 @@ nonisolated struct LibraryOperations: Sendable {
     // MARK: Move
 
     /// Moves a folder or notebook into `destination` (a folder, or the library root). A name
-    /// clash gets " 2" appended; nothing is ever overwritten.
+    /// clash gets " (2)" appended; nothing is ever overwritten.
     @discardableResult
     func move(_ item: URL, into destination: URL) throws -> URL {
         try requireInsideLibrary(item)
@@ -120,6 +120,20 @@ nonisolated struct LibraryOperations: Sendable {
             in: destination, baseName: baseName, pathExtension: isNotebook ? NotebookPackage.fileExtension : nil)
         try FileManager.default.moveItem(at: item, to: target)
         return target
+    }
+
+    // MARK: Cover
+
+    /// Changes the cover color ("#RRGGBB") of a notebook.
+    func setCoverColor(_ color: String, for notebook: URL) throws {
+        try requireInsideLibrary(notebook)
+        guard notebook.pathExtension == NotebookPackage.fileExtension else { throw LibraryError.notANotebook }
+        guard !registry.isOpen(at: notebook) else { throw LibraryError.isOpen }
+        let package = NotebookPackage(url: notebook)
+        try package.finishPendingCommit()
+        var meta = try package.readMeta()
+        meta.coverColor = color
+        try package.writeMeta(meta)
     }
 
     // MARK: Duplicate
@@ -277,7 +291,7 @@ nonisolated struct LibraryOperations: Sendable {
         var url = candidate(baseName)
         var number = 2
         while FileManager.default.fileExists(atPath: url.path) {
-            url = candidate("\(baseName) \(number)")
+            url = candidate("\(baseName) (\(number))")
             number += 1
         }
         return url

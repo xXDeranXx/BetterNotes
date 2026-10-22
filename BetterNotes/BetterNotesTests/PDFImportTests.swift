@@ -143,7 +143,7 @@ func makeSamplePDF(
         let second = try NotebookPackage.importPDF(from: source, in: library, title: "Same", coverColor: "#000000")
 
         #expect(first.url != second.url)
-        #expect(second.url.lastPathComponent == "Same 2.inkbook")
+        #expect(second.url.lastPathComponent == "Same (2).inkbook")
     }
 
     @Test func titleComesFromTheFileName() {

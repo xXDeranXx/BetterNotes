@@ -16,6 +16,15 @@ nonisolated struct NotebookSummary: Identifiable, Equatable, Sendable {
     var id: URL { url }
 }
 
+extension NotebookSummary {
+    /// A summary for a notebook that was just created, so it can be opened without a rescan.
+    static func placeholder(for package: NotebookPackage) -> NotebookSummary {
+        summaryOrFallback(package.url)
+    }
+
+    private static func summaryOrFallback(_ url: URL) -> NotebookSummary { LibraryScanner.summary(of: url) }
+}
+
 nonisolated struct FolderSummary: Identifiable, Equatable, Sendable {
     let url: URL
     var name: String { url.lastPathComponent }

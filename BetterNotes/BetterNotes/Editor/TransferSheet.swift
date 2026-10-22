@@ -16,7 +16,7 @@ struct TransferSheet: View {
         self.pageCount = pageCount
         self.choose = choose
         self.cancel = cancel
-        notebooks = LibraryLocation.documents.notebookURLs().filter {
+        notebooks = LibraryScanner.allNotebooks(under: LibraryLocation.documents.root).filter { $0.problem == nil }.map(\.url).filter {
             $0.standardizedFileURL.resolvingSymlinksInPath() != sourceURL.standardizedFileURL.resolvingSymlinksInPath()
         }
     }

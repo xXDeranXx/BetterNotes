@@ -53,14 +53,14 @@ nonisolated struct NotebookPackage: Sendable {
         }
     }
 
-    /// "Title.inkbook", or "Title 2.inkbook", "Title 3.inkbook", ... if that name is taken.
+    /// "Title.inkbook", or "Title (2).inkbook", "Title (3).inkbook", ... if that name is taken.
     static func uniqueURL(in parent: URL, title: String) -> URL {
         let base = fileName(forTitle: title)
         var candidate = parent.appending(path: "\(base).\(fileExtension)", directoryHint: .isDirectory)
         var number = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
             candidate = parent.appending(
-                path: "\(base) \(number).\(fileExtension)", directoryHint: .isDirectory)
+                path: "\(base) (\(number)).\(fileExtension)", directoryHint: .isDirectory)
             number += 1
         }
         return candidate
