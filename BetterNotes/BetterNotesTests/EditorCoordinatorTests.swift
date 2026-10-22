@@ -151,4 +151,15 @@ struct EditorCoordinatorTests {
 
         #expect(setup.coordinator.pageID(for: first) == setup.pageA)
     }
+
+    @Test func canvasRenderScaleFollowsTheZoomButIsCapped() {
+        // A retina iPad (2x): at the fit-to-width zoom of about 1.36 the canvas needs 3x.
+        #expect(EditorCoordinator.renderScale(zoom: 1, screenScale: 2) == 2)
+        #expect(EditorCoordinator.renderScale(zoom: 1.36, screenScale: 2) == 3)
+        #expect(EditorCoordinator.renderScale(zoom: 2, screenScale: 2) == 4)
+        // Never below the screen scale, even when zoomed out.
+        #expect(EditorCoordinator.renderScale(zoom: 0.5, screenScale: 2) == 2)
+        // Capped, so a deep zoom cannot allocate a huge canvas.
+        #expect(EditorCoordinator.renderScale(zoom: 6, screenScale: 2) == EditorCoordinator.maxRenderScale)
+    }
 }

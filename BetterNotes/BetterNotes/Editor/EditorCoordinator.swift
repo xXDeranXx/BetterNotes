@@ -18,6 +18,22 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     let toolPicker = PKToolPicker()
     private(set) var visibleOverlays: [UUID: PageOverlayView] = [:]
 
+    /// PDFKit gives every overlay the size of the page in points (595 x 842 for A4) at every
+    /// zoom, and enlarges it from outside. A canvas left at its default resolution is
+    /// therefore enlarged as a picture and looks soft. We raise its render scale with the zoom.
+    /// Each canvas costs width x height x scale^2 x 4 bytes (about 50 MB for A4 at 5), so the
+    /// scale is capped. Tune the cap on the iPad.
+    static let maxRenderScale: CGFloat = 5
+
+    /// The scale a canvas should render at: the screen's own scale times the zoom, rounded up
+    /// to a whole number so a pinch does not re-render on every frame, never below the
+    /// screen's scale and never above `maxRenderScale`.
+    static func renderScale(zoom: CGFloat, screenScale: CGFloat) -> CGFloat {
+        min(max(screenScale, (screenScale * zoom).rounded(.up)), maxRenderScale)
+    }
+
+    private var zoom: CGFloat = 1
+
     /// True while we copy a drawing between model and canvas. PencilKit calls the delegate,
     /// synchronously, when code assigns `canvas.drawing` (checked in the simulator). Without
     /// this flag that echo would count as a new stroke, add an undo step, and wipe the redo
@@ -60,6 +76,25 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         overlayDidDisappear(overlay)
     }
 
+    // MARK: Zoom
+
+    /// Called by the editor whenever the PDFView's zoom changes.
+    func zoomDidChange(to newZoom: CGFloat) {
+        guard newZoom != zoom else { return }
+        zoom = newZoom
+        visibleOverlays.values.forEach(applyRenderScale)
+    }
+
+    private func applyRenderScale(to overlay: PageOverlayView) {
+        let scale = Self.renderScale(zoom: zoom, screenScale: overlay.traitCollection.displayScale)
+        // Setting it on the canvas alone is not enough: PKCanvasView draws in internal subviews.
+        func set(_ view: UIView) {
+            if view.contentScaleFactor != scale { view.contentScaleFactor = scale }
+            view.subviews.forEach(set)
+        }
+        set(overlay.canvas)
+    }
+
     // MARK: Showing and hiding
 
     func overlayDidAppear(_ overlay: PageOverlayView) {
@@ -68,6 +103,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         // load from the model, never trust what the canvas still holds.
         show(notebook.drawing(for: overlay.pageID), in: overlay.canvas)
         toolPicker.addObserver(overlay.canvas)
+        applyRenderScale(to: overlay)
     }
 
     func overlayDidDisappear(_ overlay: PageOverlayView) {

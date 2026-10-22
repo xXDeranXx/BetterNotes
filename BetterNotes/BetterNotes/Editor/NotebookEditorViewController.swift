@@ -62,6 +62,16 @@ final class NotebookEditorViewController: UIViewController {
         pdfView.pageOverlayViewProvider = coordinator
         pdfView.document = document
         view.addSubview(pdfView)
+
+        // Keep ink sharp: tell the coordinator about every zoom change (see EditorCoordinator).
+        NotificationCenter.default.addObserver(
+            forName: .PDFViewScaleChanged, object: pdfView, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.coordinator.zoomDidChange(to: self.pdfView.scaleFactor)
+            }
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -69,6 +79,7 @@ final class NotebookEditorViewController: UIViewController {
         if !didSetZoomLimits, pdfView.document != nil, pdfView.scaleFactorForSizeToFit > 0 {
             didSetZoomLimits = true
             pdfView.minScaleFactor = pdfView.scaleFactorForSizeToFit * 0.5
+            coordinator.zoomDidChange(to: pdfView.scaleFactor)
         }
     }
 
