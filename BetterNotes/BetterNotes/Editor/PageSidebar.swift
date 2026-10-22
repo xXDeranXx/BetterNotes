@@ -22,30 +22,56 @@ struct PageThumbnailView: View {
         return degrees > 180 ? degrees - 360 : degrees
     }
 
+    /// Width / height of the page before its own rotation. The slot the picture sits in has
+    /// this shape and never changes when the page is turned, so turning a page moves nothing
+    /// else in the sidebar or the grid (a slot that changed shape was laid out at its new size
+    /// at once and made the picture jump).
+    private var slotAspect: CGFloat {
+        let unrotated = page.rotation % 180 == 0 ? page.size : page.size.landscape
+        return unrotated.width / unrotated.height
+    }
+
+    /// The largest size with the given width / height that fits inside `box`.
+    private func fit(aspect: CGFloat, in box: CGSize) -> CGSize {
+        aspect >= box.width / box.height
+            ? CGSize(width: box.width, height: box.width / aspect)
+            : CGSize(width: box.height * aspect, height: box.height)
+    }
+
+    private var border: some View {
+        Rectangle().stroke(
+            isHighlighted ? Color.accentColor : Color.secondary.opacity(0.4),
+            lineWidth: isHighlighted ? 3 : 1)
+    }
+
     var body: some View {
         VStack(spacing: 4) {
-            ZStack {
-                Color.white
+            GeometryReader { slot in
                 if let image {
-                    GeometryReader { box in
-                        // The old picture keeps the size it had before the page was turned and
-                        // is only scaled and rotated, never resized, so nothing stretches
-                        // while the box around it changes shape. The cell is always as wide as
-                        // the old picture's width, so turning it by 90 degrees and scaling it
-                        // by (width / height) makes it fill the new, sideways box exactly.
-                        let aspect = image.size.width / image.size.height
-                        let sideways = turn % 180 != 0
-                        Image(uiImage: image)
-                            .resizable()
-                            .frame(width: box.size.width, height: box.size.width / aspect)
-                            .scaleEffect(sideways ? aspect : 1)
-                            .rotationEffect(.degrees(Double(turn)))
-                            .position(x: box.size.width / 2, y: box.size.height / 2)
-                    }
+                    // The picture keeps the size it had before the page was turned and is only
+                    // scaled and rotated, never resized. Turned by 90 degrees it has to be
+                    // scaled so that it fills the sideways shape inside the slot exactly.
+                    let aspect = image.size.width / image.size.height
+                    let now = fit(aspect: aspect, in: slot.size)
+                    let sideways = turn % 180 != 0
+                    let target = fit(aspect: sideways ? 1 / aspect : aspect, in: slot.size)
+                    Image(uiImage: image)
+                        .resizable()
+                        .frame(width: now.width, height: now.height)
+                        .overlay(border)
+                        .scaleEffect(sideways ? target.width / now.height : 1)
+                        .rotationEffect(.degrees(Double(turn)))
+                        .position(x: slot.size.width / 2, y: slot.size.height / 2)
+                } else {
+                    // Until the picture arrives: a white page of the right shape.
+                    let shape = fit(aspect: page.size.width / page.size.height, in: slot.size)
+                    Color.white
+                        .frame(width: shape.width, height: shape.height)
+                        .overlay(border)
+                        .position(x: slot.size.width / 2, y: slot.size.height / 2)
                 }
             }
-            .aspectRatio(page.size.width / page.size.height, contentMode: .fit)
-            .overlay(Rectangle().stroke(isHighlighted ? Color.accentColor : Color.secondary.opacity(0.4), lineWidth: isHighlighted ? 3 : 1))
+            .aspectRatio(slotAspect, contentMode: .fit)
             .animation(.easeInOut(duration: 0.3), value: page.rotation)
             Text("\(number)")
                 .font(.caption.monospacedDigit())
