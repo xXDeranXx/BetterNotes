@@ -121,6 +121,24 @@ extension Notebook {
         }
     }
 
+    /// Gives pages made from a template (blank, lined, grid, dotted) another template. The page
+    /// keeps its id, its ink, its size and its rotation; only the PDF page underneath is
+    /// replaced. Imported PDF pages are left alone.
+    func changeTemplate(of ids: Set<UUID>, to template: PageTemplate) throws {
+        guard document != nil else { throw NotebookError.pagesCannotBeChanged }
+        guard template != .pdf else { return }
+        var changes: [TemplateChange] = []
+        for page in pages where ids.contains(page.id) && page.template != .pdf && page.template != template {
+            // `size` is the displayed size; the PDF page is made unrotated and then turned.
+            let unrotated = page.rotation % 180 == 0 ? page.size : page.size.landscape
+            let replacement = try Self.makeTemplatePage(template, size: unrotated).pdfPage
+            replacement.rotation = page.rotation
+            changes.append(TemplateChange(id: page.id, page: replacement, template: template))
+        }
+        guard !changes.isEmpty else { return }
+        performUndoableChange("Change Template") { applyTemplateChanges(changes) }
+    }
+
     // MARK: Making pages
 
     /// A page drawn from a template (blank, lined, grid, dotted) as a one-page PDF.
@@ -245,6 +263,34 @@ extension Notebook {
         setPageList(order.compactMap { byID[$0] })
         undoManager.registerUndo(withTarget: self) { notebook in
             MainActor.assumeIsolated { notebook.applyOrder(oldOrder) }
+        }
+    }
+
+    private struct TemplateChange {
+        let id: UUID
+        let page: PDFPage
+        let template: PageTemplate
+    }
+
+    /// Swaps the PDF page of each listed page for another one at the same position. Undo swaps
+    /// the old pages (kept alive by the undo step) back in.
+    private func applyTemplateChanges(_ changes: [TemplateChange]) {
+        guard let document else { return }
+        var list = pages
+        var previous: [TemplateChange] = []
+        for change in changes {
+            guard let index = list.firstIndex(where: { $0.id == change.id }),
+                let old = document.page(at: index)
+            else { continue }
+            previous.append(TemplateChange(id: change.id, page: old, template: list[index].template))
+            register(change.page, as: change.id)  // before PDFKit can ask for its overlay
+            document.removePage(at: index)
+            document.insert(change.page, at: index)
+            list[index].template = change.template
+        }
+        setPageList(list)
+        undoManager.registerUndo(withTarget: self) { notebook in
+            MainActor.assumeIsolated { notebook.applyTemplateChanges(previous) }
         }
     }
 

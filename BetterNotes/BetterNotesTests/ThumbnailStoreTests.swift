@@ -66,6 +66,22 @@ struct ThumbnailStoreTests {
         #expect(store.renderCount == 2)
     }
 
+    @Test func changingTheTemplateChangesTheKeyAndThePicture() async throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder)
+        let id = try notebook.addPage(template: .lined, at: 1)
+        let store = ThumbnailStore(notebook: notebook)
+        let lined = try #require(await store.image(for: notebook.pages[1]))
+        #expect(!PixelReader(lined).isWhite(150, 45))  // the first ruled line, at half size
+        let keyBefore = store.key(for: notebook.pages[1])
+
+        try notebook.changeTemplate(of: [id], to: .blank)
+
+        #expect(store.key(for: notebook.pages[1]) != keyBefore)
+        let blank = try #require(await store.image(for: notebook.pages[1]))
+        #expect(PixelReader(blank).isWhite(150, 45))
+    }
+
     @Test func rotatingAPageGivesAThumbnailOfTheTurnedShape() async throws {
         let folder = try TempFolder()
         let notebook = try makeOpenNotebook(in: folder)
@@ -85,7 +101,7 @@ struct ThumbnailStoreTests {
         let notebook = try makeOpenNotebook(in: folder)
         let page = notebook.pages[1]
         _ = await ThumbnailStore(notebook: notebook).image(for: page)
-        let file = notebook.package.url.appending(path: "thumbnails/\(page.id.uuidString)-r0.jpg")
+        let file = notebook.package.url.appending(path: "thumbnails/\(page.id.uuidString)-pdf-r0.jpg")
         #expect(await waitForFile(file))
 
         let reopened = try Notebook.open(notebook.package)
@@ -101,7 +117,7 @@ struct ThumbnailStoreTests {
         let notebook = try makeOpenNotebook(in: folder)
         let page = notebook.pages[1]
         _ = await ThumbnailStore(notebook: notebook).image(for: page)
-        let file = notebook.package.url.appending(path: "thumbnails/\(page.id.uuidString)-r0.jpg")
+        let file = notebook.package.url.appending(path: "thumbnails/\(page.id.uuidString)-pdf-r0.jpg")
         #expect(await waitForFile(file))
         try await Task.sleep(for: .milliseconds(50))
         notebook.setDrawing(lineDrawing(from: CGPoint(x: 100, y: 400), to: CGPoint(x: 300, y: 400), width: 20), for: page.id)

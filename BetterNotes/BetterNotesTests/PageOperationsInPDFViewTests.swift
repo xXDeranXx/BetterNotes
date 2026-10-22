@@ -120,4 +120,18 @@ struct PageOperationsInPDFViewTests {
         #expect(abs(xAxisEnd.x - origin.x) < 1 && xAxisEnd.y - origin.y > 100)
         expectEveryCanvasShowsItsOwnPage(setup)
     }
+
+    @Test func changingATemplateKeepsEveryCanvasOnItsOwnPage() async throws {
+        let setup = try await makeSetup()
+        let id = try setup.notebook.addPage(template: .lined, at: 1)
+        setup.notebook.setDrawing(lineDrawing(from: CGPoint(x: 50, y: 50), to: CGPoint(x: 300, y: 50)), for: id)
+        try await settle(setup)
+        expectEveryCanvasShowsItsOwnPage(setup)
+
+        try setup.notebook.changeTemplate(of: [id], to: .dotted)
+        try await settle(setup)
+
+        expectEveryCanvasShowsItsOwnPage(setup)  // the PDF page object was replaced under a visible canvas
+        #expect(setup.coordinator.visibleOverlays[id] != nil)
+    }
 }

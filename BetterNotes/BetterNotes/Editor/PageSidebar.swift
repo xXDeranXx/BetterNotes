@@ -28,12 +28,17 @@ struct PageThumbnailView: View {
                 Color.white
                 if let image {
                     GeometryReader { box in
-                        // Before turning, the old picture has the old (swapped) shape.
+                        // The old picture keeps the size it had before the page was turned and
+                        // is only scaled and rotated, never resized, so nothing stretches
+                        // while the box around it changes shape. The cell is always as wide as
+                        // the old picture's width, so turning it by 90 degrees and scaling it
+                        // by (width / height) makes it fill the new, sideways box exactly.
+                        let aspect = image.size.width / image.size.height
                         let sideways = turn % 180 != 0
                         Image(uiImage: image)
-                            .resizable().scaledToFit()
-                            .frame(width: sideways ? box.size.height : box.size.width,
-                                   height: sideways ? box.size.width : box.size.height)
+                            .resizable()
+                            .frame(width: box.size.width, height: box.size.width / aspect)
+                            .scaleEffect(sideways ? aspect : 1)
                             .rotationEffect(.degrees(Double(turn)))
                             .position(x: box.size.width / 2, y: box.size.height / 2)
                     }
@@ -51,6 +56,13 @@ struct PageThumbnailView: View {
         .task(id: thumbnails.key(for: page)) {
             let rotation = page.rotation
             if let rendered = await thumbnails.image(for: page) {
+                // The new picture is ready long before the turn animation ends. Swapping
+                // earlier would snap the old picture back to 0 degrees in the middle of the
+                // turn, so wait until the turn is finished; both then look the same.
+                if turn != 0 {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { return }
+                }
                 if image == nil {
                     withAnimation(.easeIn(duration: 0.2)) {  // the first picture fades in
                         image = rendered
@@ -128,9 +140,8 @@ struct PageSidebar: View {
     }
 }
 
-/// The plus: a tap adds a page like the last one at the end; press and hold opens the menu
-/// with the templates (blank, lined, grid, dotted) and the ways to insert existing pages
-/// (a PDF, a photo, an image file).
+/// The plus: a tap opens the menu with the templates for a new page at the end (blank, lined,
+/// grid, dotted) and the ways to insert existing pages (a PDF, a photo, an image file).
 struct AddPageButton: View {
     let actions: PageActions
     @Binding var insertKind: InsertKind?
@@ -150,8 +161,6 @@ struct AddPageButton: View {
         } label: {
             Label("Add Page", systemImage: "plus.square")
                 .frame(maxWidth: .infinity)
-        } primaryAction: {
-            actions.addPageAtEnd()
         }
         .buttonStyle(.bordered)
     }
@@ -174,6 +183,19 @@ struct PageMenu: View {
             ForEach(PageTemplate.choosable, id: \.self) { template in
                 Button(template.menuName, systemImage: template.menuIcon) {
                     actions.insertPage(template: template, relativeTo: page.id, after: true)
+                }
+            }
+        }
+        // Only pages made from a template can change it; an imported PDF page is someone else's content.
+        if page.template != .pdf {
+            Menu("Change Template", systemImage: "square.grid.3x3.square") {
+                ForEach(PageTemplate.choosable, id: \.self) { template in
+                    Button(
+                        template.menuName,
+                        systemImage: template == page.template ? "checkmark" : template.menuIcon
+                    ) {
+                        actions.changeTemplate([page.id], to: template)
+                    }
                 }
             }
         }

@@ -57,6 +57,10 @@ struct PageActions {
         }
     }
 
+    func changeTemplate(_ ids: Set<UUID>, to template: PageTemplate) {
+        attempt { try notebook.changeTemplate(of: ids, to: template) }
+    }
+
     func duplicate(_ ids: Set<UUID>) { attempt { _ = try notebook.duplicatePages(ids) } }
     func rotate(_ ids: Set<UUID>, by degrees: Int) { attempt { try notebook.rotatePages(ids, by: degrees) } }
     func delete(_ ids: Set<UUID>) { attempt { try notebook.deletePages(ids) } }

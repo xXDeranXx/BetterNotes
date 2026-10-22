@@ -28,6 +28,9 @@ final class NotebookEditorViewController: UIViewController {
     private let navigator: PageNavigator
     private var didSetZoomLimits = false
     private var isToolPickerHidden = false
+    /// The "fit to width" zoom the last time the pages were laid out. It changes when a page
+    /// operation changes the widest page (turning a page sideways), see `refitIfPagesChangedWidth`.
+    private var lastFitScale: CGFloat = 0
 
     init(notebook: Notebook, search: DocumentSearch, navigator: PageNavigator) {
         self.notebook = notebook
@@ -73,7 +76,11 @@ final class NotebookEditorViewController: UIViewController {
         // PDFView re-lays-out by itself when pages are added or removed, but not when a page
         // is turned; asking it to lay out again after every page operation covers both.
         notebook.onStructureChange = { [weak self] in
-            self?.pdfView.layoutDocumentView()
+            guard let self else { return }
+            self.pdfView.layoutDocumentView()
+            self.refitIfPagesChangedWidth()
+            // PDFView finishes laying out a moment later; look again then.
+            DispatchQueue.main.async { [weak self] in self?.refitIfPagesChangedWidth() }
         }
 
         // Keep ink sharp: tell the coordinator about every zoom change (see EditorCoordinator).
@@ -92,8 +99,23 @@ final class NotebookEditorViewController: UIViewController {
         if !didSetZoomLimits, pdfView.document != nil, pdfView.scaleFactorForSizeToFit > 0 {
             didSetZoomLimits = true
             pdfView.minScaleFactor = pdfView.scaleFactorForSizeToFit * 0.5
+            lastFitScale = pdfView.scaleFactorForSizeToFit
             coordinator.zoomDidChange(to: pdfView.scaleFactor)
         }
+    }
+
+    /// PDFView only fits the pages to the width when the document or the view size changes.
+    /// After a page was turned sideways the widest page is wider, and without this it would run
+    /// off the screen. Operations that do not change the widest page (adding a page) keep the
+    /// zoom the user chose.
+    private func refitIfPagesChangedWidth() {
+        let fit = pdfView.scaleFactorForSizeToFit
+        guard didSetZoomLimits, fit > 0, abs(fit - lastFitScale) > 0.001 else { return }
+        lastFitScale = fit
+        pdfView.minScaleFactor = fit * 0.5
+        pdfView.autoScales = false  // switching it off and on again makes PDFView fit again
+        pdfView.autoScales = true
+        coordinator.zoomDidChange(to: pdfView.scaleFactor)
     }
 
     override func viewDidAppear(_ animated: Bool) {

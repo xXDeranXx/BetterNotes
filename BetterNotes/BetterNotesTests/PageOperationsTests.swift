@@ -264,6 +264,106 @@ struct PageOperationsTests {
         expectConsistent(notebook)
     }
 
+    // MARK: Change template
+
+    /// The page rendered at its displayed size, to see which template is really in the PDF.
+    private func render(_ notebook: Notebook, page index: Int) -> PixelReader {
+        PixelReader(PageRenderer.render(page: notebook.document!.page(at: index)!, drawing: PKDrawing(), scale: 1))
+    }
+
+    @Test func changingTheTemplateReplacesThePageButKeepsIdInkAndSize() throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder, pageCount: 2)
+        let id = try notebook.addPage(template: .lined, at: 1)
+        notebook.setDrawing(sampleDrawing(), for: id)
+        #expect(!render(notebook, page: 1).isWhite(300, 90))  // lined: the first ruled line is at y = 90
+        let before = notebook.pages[1]
+
+        try notebook.changeTemplate(of: [id], to: .blank)
+
+        #expect(notebook.pages[1].id == id && notebook.pages[1].size == before.size)
+        #expect(notebook.pages[1].template == .blank)
+        #expect(render(notebook, page: 1).isWhite(300, 90))  // the lines are gone from the PDF itself
+        #expect(notebook.drawing(for: id).strokes.count == 1)  // ink untouched
+        #expect(labels(notebook) == ["P1", "", "P2"])
+        expectConsistent(notebook)
+    }
+
+    @Test func changingToGridDrawsTheGrid() throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder, pageCount: 1)
+        let id = try notebook.addPage(template: .blank, at: 1)
+
+        try notebook.changeTemplate(of: [id], to: .grid)
+
+        let pixels = render(notebook, page: 1)
+        // A4 is 595 wide and the 20 pt grid is centred: its first vertical line is at x = 7.5.
+        #expect(!(0..<30).allSatisfy { pixels.isWhite($0, 400) })
+        #expect(notebook.pages[1].template == .grid)
+    }
+
+    @Test func aTurnedPageKeepsItsRotationAndShapeWhenTheTemplateChanges() throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder, pageCount: 1)
+        let id = try notebook.addPage(template: .lined, at: 1)
+        try notebook.rotatePages([id], by: 90)
+        let turned = notebook.pages[1]
+        #expect(turned.size == PageSize(width: 842, height: 595))
+
+        try notebook.changeTemplate(of: [id], to: .dotted)
+
+        #expect(notebook.pages[1].rotation == 90 && notebook.pages[1].size == turned.size)
+        #expect(notebook.pages[1].template == .dotted)
+        expectConsistent(notebook)
+    }
+
+    @Test func undoAndRedoOfAChangedTemplate() throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder, pageCount: 1)
+        let id = try notebook.addPage(template: .lined, at: 1)
+        notebook.undoManager.removeAllActions()
+
+        try notebook.changeTemplate(of: [id], to: .blank)
+        notebook.undoManager.undo()
+
+        #expect(notebook.pages[1].template == .lined)
+        #expect(!render(notebook, page: 1).isWhite(300, 90))  // the lines are back
+        expectConsistent(notebook)
+
+        notebook.undoManager.redo()
+        #expect(notebook.pages[1].template == .blank)
+        #expect(render(notebook, page: 1).isWhite(300, 90))
+    }
+
+    @Test func importedPagesAndTheSameTemplateAreLeftAloneWithoutAnUndoStep() throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder, pageCount: 2)
+        let lined = try notebook.addPage(template: .lined, at: 2)
+        notebook.undoManager.removeAllActions()
+        let before = notebook.pages
+
+        try notebook.changeTemplate(of: [notebook.pages[0].id], to: .blank)  // an imported PDF page
+        try notebook.changeTemplate(of: [lined], to: .lined)  // already lined
+
+        #expect(notebook.pages == before)
+        #expect(!notebook.undoManager.canUndo)
+        #expect(labels(notebook) == ["P1", "P2", ""])
+    }
+
+    @Test func aChangedTemplateIsSavedAndSurvivesReopening() async throws {
+        let folder = try TempFolder()
+        let notebook = try makeOpenNotebook(in: folder, pageCount: 1)
+        let id = try notebook.addPage(template: .lined, at: 1)
+        try notebook.changeTemplate(of: [id], to: .grid)
+        await notebook.saveChanges()
+
+        let reopened = try Notebook.open(notebook.package)
+
+        #expect(reopened.pages[1].template == .grid)
+        #expect(reopened.pages == notebook.pages)
+        expectConsistent(reopened)
+    }
+
     // MARK: Pages from elsewhere
 
     @Test func insertingPagesFromAnotherPDFKeepsTheirContentAndOrder() throws {

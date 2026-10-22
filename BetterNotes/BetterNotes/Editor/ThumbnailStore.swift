@@ -30,7 +30,7 @@ final class ThumbnailStore {
     /// Changes whenever the picture would look different. Views use it as the identity of the
     /// work to do, so a change cancels the old render and starts a new one.
     func key(for page: PageMeta) -> String {
-        "\(page.id.uuidString)-r\(page.rotation)-v\(revision(of: page))"
+        "\(page.id.uuidString)-\(page.template.rawValue)-r\(page.rotation)-v\(revision(of: page))"
     }
 
     func image(for page: PageMeta) async -> UIImage? {
@@ -64,7 +64,7 @@ final class ThumbnailStore {
     // MARK: Disk cache
 
     private func fileURL(for page: PageMeta) -> URL {
-        notebook.package.url.appending(path: "thumbnails/\(page.id.uuidString)-r\(page.rotation).jpg")
+        notebook.package.url.appending(path: "thumbnails/\(page.id.uuidString)-\(page.template.rawValue)-r\(page.rotation).jpg")
     }
 
     /// Valid when it is not older than the page's saved drawing.
