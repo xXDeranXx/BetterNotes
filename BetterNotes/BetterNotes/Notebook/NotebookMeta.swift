@@ -96,6 +96,9 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
     case cannotGenerateTemplate(PageTemplate)
     case pdfCreationFailed
     case alreadyOpen
+    case pdfUnreadable
+    case pdfPasswordProtected
+    case pdfHasNoPages
 
     var errorDescription: String? {
         switch self {
@@ -107,6 +110,12 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
             "The page template PDF could not be created."
         case .alreadyOpen:
             "This notebook is already open in another window. Close it there first."
+        case .pdfUnreadable:
+            "This file could not be read as a PDF. It may be damaged or not a PDF."
+        case .pdfPasswordProtected:
+            "This PDF is password protected. Remove the password in another app, then import it again."
+        case .pdfHasNoPages:
+            "This PDF has no pages."
         }
     }
 }
