@@ -45,7 +45,11 @@ final class WindowSession {
     func importPDFs(_ urls: [URL]) async {
         var imported: NotebookPackage?
         var failures: [String] = []
-        for url in urls where PDFImporter.isPDF(url) {
+        for url in urls {
+            guard PDFImporter.isPDF(url) else {
+                failures.append("\(url.lastPathComponent): this is not a PDF file.")
+                continue
+            }
             do {
                 imported = try await PDFImporter.importPDF(at: url)
             } catch {

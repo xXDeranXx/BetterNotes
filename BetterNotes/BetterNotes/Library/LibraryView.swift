@@ -11,6 +11,7 @@ struct LibraryView: View {
     @State private var notebooks: [URL] = []
     @State private var errorMessage: String?
     @State private var isPickingPDF = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         NavigationStack {
@@ -25,10 +26,27 @@ struct LibraryView: View {
                             .buttonStyle(.borderedProminent)
                         Button("Import PDF", systemImage: "square.and.arrow.down") { isPickingPDF = true }
                     }
+                    .pdfDropTarget(isTargeted: $isDropTargeted, perform: handleDrop)
                 } else {
-                    List(notebooks, id: \.self) { url in
-                        Button(url.deletingPathExtension().lastPathComponent) { open(url) }
+                    // A ScrollView of buttons instead of a List: a List is a UIKit collection
+                    // view that handles drags itself and did not pass PDF drops on. The
+                    // milestone 5 grid will be built the same way.
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(notebooks, id: \.self) { url in
+                                Button { open(url) } label: {
+                                    Text(url.deletingPathExtension().lastPathComponent)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal)
+                                        .padding(.vertical, 14)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                Divider().padding(.leading)
+                            }
+                        }
                     }
+                    .pdfDropTarget(isTargeted: $isDropTargeted, perform: handleDrop)
                 }
             }
             .navigationTitle("Library")
@@ -47,13 +65,6 @@ struct LibraryView: View {
                 case .failure(let error): errorMessage = error.localizedDescription
                 }
             }
-            // Drag and drop from another app in Split View.
-            .dropDestination(for: URL.self) { urls, _ in
-                let pdfs = urls.filter(PDFImporter.isPDF)
-                guard !pdfs.isEmpty else { return false }
-                Task { await session.importPDFs(pdfs) }
-                return true
-            }
             .alert("Something went wrong", isPresented: .constant(errorMessage != nil)) {
                 Button("OK", role: .cancel) { errorMessage = nil }
             } message: {
@@ -61,6 +72,55 @@ struct LibraryView: View {
             }
             .task { reload() }
         }
+        // Drag and drop from another app in Split View, also on the navigation bar.
+        .pdfDropTarget(isTargeted: $isDropTargeted, perform: handleDrop)
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(.tint, lineWidth: 4)
+                    .padding(8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// A dragged file arrives as an `NSItemProvider`, a promise of data that the other app
+    /// fulfils on request. `loadFileRepresentation` gives a temporary copy that the system
+    /// deletes as soon as the callback returns, so the copy must be moved somewhere of ours
+    /// right there, before the (slower) import starts.
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        let pdfProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) }
+        guard !pdfProviders.isEmpty else { return false }
+        for provider in pdfProviders {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { url, error in
+                guard let url else {
+                    let message = error?.localizedDescription ?? "The dropped file could not be read."
+                    Task { @MainActor in errorMessage = message }
+                    return
+                }
+                // Own folder per drop, so the file keeps its name (it becomes the title).
+                let folder = FileManager.default.temporaryDirectory
+                    .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+                // The provider's temporary file may have no ".pdf" ending; the type already
+                // told us it is a PDF, so make sure the name says so too.
+                var name = url.lastPathComponent
+                if !PDFImporter.isPDF(url) { name += ".pdf" }
+                let copy = folder.appending(path: name)
+                do {
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    try FileManager.default.copyItem(at: url, to: copy)
+                } catch {
+                    let message = error.localizedDescription
+                    Task { @MainActor in errorMessage = message }
+                    return
+                }
+                Task { @MainActor in
+                    await session.importPDFs([copy])
+                    try? FileManager.default.removeItem(at: folder)  // our own temporary copy
+                }
+            }
+        }
+        return true
     }
 
     private func reload() {
@@ -95,4 +155,11 @@ struct LibraryView: View {
 
 #Preview {
     LibraryView().environment(WindowSession())
+}
+
+private extension View {
+    /// Accepts a PDF dragged in from another app.
+    func pdfDropTarget(isTargeted: Binding<Bool>, perform: @escaping ([NSItemProvider]) -> Bool) -> some View {
+        onDrop(of: [.pdf], isTargeted: isTargeted, perform: perform)
+    }
 }
