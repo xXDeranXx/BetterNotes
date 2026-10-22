@@ -23,10 +23,6 @@ struct PenToolbar: View {
         .padding(8)
         .animation(.easeInOut(duration: 0.2), value: tools.settings.isToolbarCollapsed)
         .animation(.easeInOut(duration: 0.2), value: tools.settings.toolbarPosition)
-        // The Pencil's squeeze or double tap can ask for the color palette.
-        .popover(isPresented: $tools.isPalettePresented) {
-            PenOptionsView(tools: tools, kind: tools.currentPen)
-        }
     }
 
     private var collapsed: some View {

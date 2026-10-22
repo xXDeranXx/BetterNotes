@@ -30,7 +30,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     private var isToolPickerHidden = false
     private var tools = ToolSettings()
     /// The editor view forwards the Pencil's squeeze and double tap to the toolbar.
-    var onPencilAction: ((UIPencilPreferredAction) -> Void)?
+    var onPencilAction: ((UIPencilPreferredAction, CGPoint?) -> Void)?
     /// The "fit to width" zoom the last time the pages were laid out. It changes when a page
     /// operation changes the widest page (turning a page sideways), see `refitIfPagesChangedWidth`.
     private var lastFitScale: CGFloat = 0
@@ -190,11 +190,13 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     ) -> Bool { true }
 
     func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
-        onPencilAction?(UIPencilInteraction.preferredTapAction)
+        onPencilAction?(UIPencilInteraction.preferredTapAction, tap.hoverPose.map { $0.location })
     }
 
     func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
-        if squeeze.phase == .ended { onPencilAction?(UIPencilInteraction.preferredSqueezeAction) }
+        if squeeze.phase == .ended {
+            onPencilAction?(UIPencilInteraction.preferredSqueezeAction, squeeze.hoverPose.map { $0.location })
+        }
     }
 
     private func showProblem(_ message: String) {
