@@ -27,6 +27,7 @@ final class NotebookEditorViewController: UIViewController {
     private let search: DocumentSearch
     private let navigator: PageNavigator
     private var didSetZoomLimits = false
+    private var isToolPickerHidden = false
 
     init(notebook: Notebook, search: DocumentSearch, navigator: PageNavigator) {
         self.notebook = notebook
@@ -99,7 +100,17 @@ final class NotebookEditorViewController: UIViewController {
         super.viewDidAppear(animated)
         // First responder only works once the view is in a window.
         view.becomeFirstResponder()
-        coordinator.toolPicker.setVisible(true, forFirstResponder: view)
+        coordinator.toolPicker.setVisible(!isToolPickerHidden, forFirstResponder: view)
+    }
+
+    /// The tool palette floats above everything in the window, also above a full-screen page
+    /// grid that covers this editor, so the grid asks for it to be hidden while it is open.
+    func setToolPickerHidden(_ hidden: Bool) {
+        guard hidden != isToolPickerHidden else { return }
+        isToolPickerHidden = hidden
+        guard view.window != nil else { return }  // viewDidAppear applies it later
+        if !hidden { view.becomeFirstResponder() }
+        coordinator.toolPicker.setVisible(!hidden, forFirstResponder: view)
     }
 
     override func viewWillDisappear(_ animated: Bool) {

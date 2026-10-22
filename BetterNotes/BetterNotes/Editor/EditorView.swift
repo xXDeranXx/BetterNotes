@@ -7,12 +7,16 @@ struct NotebookEditor: UIViewControllerRepresentable {
     let notebook: Notebook
     let search: DocumentSearch
     let navigator: PageNavigator
+    var isToolPickerHidden = false
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
         NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
     }
 
-    func updateUIViewController(_ controller: NotebookEditorViewController, context: Context) {}
+    // SwiftUI calls this whenever a value above changes: the way to push state into UIKit.
+    func updateUIViewController(_ controller: NotebookEditorViewController, context: Context) {
+        controller.setToolPickerHidden(isToolPickerHidden)
+    }
 }
 
 /// The editor screen: the notebook with a small toolbar.
@@ -26,6 +30,7 @@ struct EditorView: View {
     @State private var navigator: PageNavigator
     @State private var isSidebarVisible = true
     @State private var pageError: String?
+    @State private var isShowingGrid = false
 
     init(notebook: Notebook) {
         self.notebook = notebook
@@ -44,7 +49,8 @@ struct EditorView: View {
                     PageSidebar(notebook: notebook, thumbnails: thumbnails, navigator: navigator, actions: actions)
                     Divider()
                 }
-                NotebookEditor(notebook: notebook, search: search, navigator: navigator)
+                NotebookEditor(
+                    notebook: notebook, search: search, navigator: navigator, isToolPickerHidden: isShowingGrid)
             }
                 .ignoresSafeArea(edges: .bottom)
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -71,6 +77,13 @@ struct EditorView: View {
                 } message: {
                     Text(pageError ?? "")
                 }
+                // The grid covers the whole screen. The editor stays alive underneath, so its
+                // scroll position and zoom are still there when the grid is closed.
+                .fullScreenCover(isPresented: $isShowingGrid) {
+                    PageGridView(
+                        notebook: notebook, thumbnails: thumbnails, navigator: navigator, actions: actions
+                    ) { isShowingGrid = false }
+                }
                 .navigationTitle(notebook.meta.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -79,6 +92,7 @@ struct EditorView: View {
                         Button("Pages", systemImage: "sidebar.left") { isSidebarVisible.toggle() }
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button("Page Grid", systemImage: "square.grid.2x2") { isShowingGrid = true }
                         Button("Add Page", systemImage: "plus.square") { actions.addPageAtEnd() }
                         Button("Search", systemImage: "magnifyingglass") {
                             if isSearching { search.clear() }

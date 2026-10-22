@@ -33,6 +33,15 @@ struct PageActions {
         }
     }
 
+    /// A page dragged onto another page in the grid. If the dragged page is part of the
+    /// selection, the whole selection moves with it.
+    func drop(_ draggedID: UUID, selection: Set<UUID>, onto target: UUID) {
+        let moving = selection.contains(draggedID) ? selection : [draggedID]
+        guard let index = PageReorder.destination(order: notebook.pages.map(\.id), moving: moving, onto: target)
+        else { return }
+        attempt { try notebook.movePages(moving, toIndex: index) }
+    }
+
     func duplicate(_ ids: Set<UUID>) { attempt { _ = try notebook.duplicatePages(ids) } }
     func rotate(_ ids: Set<UUID>, by degrees: Int) { attempt { try notebook.rotatePages(ids, by: degrees) } }
     func delete(_ ids: Set<UUID>) { attempt { try notebook.deletePages(ids) } }
