@@ -19,6 +19,12 @@ struct LibraryView: View {
                     .buttonStyle(.borderedProminent)
             }
             .navigationTitle("Library")
+            .toolbar {
+                // TEMPORARY: remove together with the Spike folder.
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink("Spike") { StrokeCancelSpikeView() }
+                }
+            }
             .alert("Coming soon", isPresented: $showsComingSoon) {
                 Button("OK", role: .cancel) {}
             } message: {
