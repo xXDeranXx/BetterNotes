@@ -34,4 +34,27 @@ struct LibraryLocationTests {
 
         #expect(try Data(contentsOf: note) == Data("keep me".utf8))
     }
+
+    @Test func emptyLibraryGetsVisiblePlaceholder() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try LibraryLocation(root: root).prepare()
+
+        #expect(FileManager.default.fileExists(
+            atPath: root.appending(path: LibraryLocation.placeholderName).path))
+    }
+
+    @Test func libraryWithContentGetsNoPlaceholder() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appending(path: "Uni", directoryHint: .isDirectory),
+            withIntermediateDirectories: true)
+
+        try LibraryLocation(root: root).prepare()
+
+        #expect(!FileManager.default.fileExists(
+            atPath: root.appending(path: LibraryLocation.placeholderName).path))
+    }
 }

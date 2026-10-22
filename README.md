@@ -41,6 +41,6 @@ Cmd+U in Xcode, or:
 ```sh
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
   -project BetterNotes/BetterNotes.xcodeproj -scheme BetterNotes \
-  -destination 'platform=iOS Simulator,name=iPad Pro 11-inch (M5)' \
+  -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M2)' \
   -only-testing:BetterNotesTests
 ```

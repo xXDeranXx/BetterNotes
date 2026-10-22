@@ -16,9 +16,23 @@ nonisolated struct LibraryLocation {
 
     var trash: URL { root.appending(path: ".Trash", directoryHint: .isDirectory) }
 
+    static let placeholderName = "About BetterNotes.txt"
+
     /// Creates the folders the app expects. Safe to call on every launch and
     /// from every window: existing files and folders are never touched.
     func prepare() throws {
-        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: trash, withIntermediateDirectories: true)
+
+        // The Files app only lists an app's folder once Documents holds something
+        // visible, and `.Trash` is hidden. So an empty library gets a small note.
+        let visible = try fileManager.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)
+        if visible.isEmpty {
+            let note = "This folder is the BetterNotes library. Notebooks (.inkbook) and folders live here.\n"
+                + "Do not delete the BetterNotes app from the iPad: that deletes everything in this folder.\n"
+            try Data(note.utf8).write(
+                to: root.appending(path: Self.placeholderName), options: .atomic)
+        }
     }
 }
