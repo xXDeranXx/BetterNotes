@@ -63,6 +63,9 @@ struct SpikeCanvas: UIViewRepresentable {
         let canvas = PKCanvasView()
         canvas.drawingPolicy = .anyInput  // the spike also has to work with a finger in the simulator
         canvas.backgroundColor = .white
+        // In dark mode PencilKit draws a black pen as white, which is invisible on white paper.
+        // Pages stay white in this app (SPEC), so the canvas always uses the light appearance.
+        canvas.overrideUserInterfaceStyle = .light
         canvas.tool = PKInkingTool(.pen, color: .black, width: 4)
         canvas.delegate = context.coordinator
         context.coordinator.canvas = canvas
@@ -115,7 +118,11 @@ struct SpikeCanvas: UIViewRepresentable {
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            status.wrappedValue = "Drawing changed: \(canvasView.drawing.strokes.count) stroke(s) committed."
+            let strokes = canvasView.drawing.strokes
+            let last = strokes.last.map { stroke in
+                "last: \(stroke.path.count) points, \(Int(stroke.renderBounds.width))x\(Int(stroke.renderBounds.height)) pt"
+            } ?? "none"
+            status.wrappedValue = "Drawing changed: \(strokes.count) stroke(s) committed, \(last)."
         }
 
         /// A red ring where the hold was detected, standing in for the future shape preview layer.
