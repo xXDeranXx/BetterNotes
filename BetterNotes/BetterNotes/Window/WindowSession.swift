@@ -25,38 +25,31 @@ final class WindowSession {
         if let claimedURL { registry.release(claimedURL) }
     }
 
-    /// The cover that grows from its tile to the whole window while a notebook opens
-    /// (Goodnotes-style). `RootView` draws it above both the library and the editor.
-    struct CoverTransition {
-        var image: UIImage?
-        var from: CGRect
-        var expanded = false
-    }
+    /// While a notebook fades in over the library (see `openAnimated`).
+    private(set) var isOpening = false
+    private(set) var openRevealed = false
 
-    private(set) var coverTransition: CoverTransition?
-    var isZooming: Bool { coverTransition != nil }
-
-    /// Opens a notebook with a zoom that ends in the real editor, so nothing jumps at the end:
-    /// 1. the notebook opens at once and the editor is built invisibly underneath the library
-    ///    (the heavy part, done while nothing is moving);
-    /// 2. the cover grows from its tile to the window while it fades out and the editor fades
-    ///    in, a cross-fade from the cover into the page you will write on;
-    /// 3. the library is removed.
-    func openZooming(_ package: NotebookPackage, from frame: CGRect, image: UIImage?) async throws {
+    /// Opens a notebook with the mirror image of `closeAnimated`: the notebook opens at once and
+    /// the editor is built invisibly on top of the library (the heavy part, done while nothing
+    /// moves), then it grows from 94 % to full size while it fades in, then the library is
+    /// removed.
+    func openAnimated(_ package: NotebookPackage) async throws {
+        guard !isOpening, !isClosing else { return }
         if registry.isOpen(at: package.url) { throw NotebookError.alreadyOpen }
         TransitionGate.isActive = true
         defer { TransitionGate.isActive = false }
-        coverTransition = CoverTransition(image: image, from: frame)
+        isOpening = true
         do {
             try open(package)
         } catch {
-            coverTransition = nil
+            isOpening = false
             throw error
         }
-        try? await Task.sleep(for: .milliseconds(180))  // the editor lays itself out
-        withAnimation(.smooth(duration: 0.4)) { coverTransition?.expanded = true }
-        try? await Task.sleep(for: .milliseconds(450))
-        coverTransition = nil
+        try? await Task.sleep(for: .milliseconds(150))  // the editor lays itself out
+        withAnimation(.easeInOut(duration: 0.3)) { openRevealed = true }
+        try? await Task.sleep(for: .milliseconds(330))
+        isOpening = false
+        openRevealed = false
     }
 
     /// While the editor fades out and the library shows through (see `closeAnimated`).

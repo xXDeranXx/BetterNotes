@@ -20,7 +20,6 @@ struct LibraryView: View {
     @State private var itemToTrash: (url: URL, name: String)?
     @State private var dropTargetFolder: URL?
     @State private var isConfirmingEmptyTrash = false
-    @State private var tileFrames = TileFrames()
     @State private var isTrashDropTargeted = false
 
     private enum NamePrompt: Identifiable {
@@ -279,11 +278,6 @@ struct LibraryView: View {
             if model.isSelecting { model.toggleSelection(notebook.url) } else { open(notebook) }
         } label: {
             label()
-                // Remember where the tile is, to zoom its cover open from there. A plain class,
-                // so scrolling does not re-render the grid.
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
-                    tileFrames.frames[notebook.url] = $0
-                }
         }
         .buttonStyle(.plain)
         .confirmationDialog("Move \"\(notebook.title)\" to the trash?", isPresented: trashDialog(for: notebook.url, name: notebook.title), titleVisibility: .visible) {
@@ -472,19 +466,11 @@ struct LibraryView: View {
             model.errorMessage = "\"\(notebook.title)\" cannot be opened: \(problem)"
             return
         }
-        guard session.coverTransition == nil else { return }  // a second tap while zooming
         let package = NotebookPackage(url: notebook.url)
-        model.recordOpened(notebook)
-        guard let tile = tileFrames.frames[notebook.url] else {
-            do { try session.open(package) } catch { model.errorMessage = error.localizedDescription }
-            return
-        }
-        // The cover part of the tile (the picture above the title).
-        let cover = CGRect(x: tile.midX - libraryTileWidth / 2, y: tile.minY, width: libraryTileWidth, height: libraryTileHeight)
         Task {
-            let image = await CoverStore.shared.image(for: notebook)
             do {
-                try await session.openZooming(package, from: cover, image: image)
+                try await session.openAnimated(package)
+                model.recordOpened(notebook)
             } catch {
                 model.errorMessage = error.localizedDescription
             }
@@ -530,12 +516,6 @@ struct LibraryView: View {
         }
         return true
     }
-}
-
-/// Where each notebook tile is on screen. A class on purpose: writing into it while scrolling
-/// does not make SwiftUI redraw anything.
-final class TileFrames {
-    var frames: [URL: CGRect] = [:]
 }
 
 #Preview {
