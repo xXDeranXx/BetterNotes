@@ -47,8 +47,13 @@ struct EditorView: View {
         NavigationStack {
             HStack(spacing: 0) {
                 if isSidebarVisible {
-                    PageSidebar(notebook: notebook, thumbnails: thumbnails, navigator: navigator, actions: actions)
-                    Divider()
+                    HStack(spacing: 0) {
+                        PageSidebar(
+                            notebook: notebook, thumbnails: thumbnails, navigator: navigator,
+                            actions: actions, insertKind: $insertKind)
+                        Divider()
+                    }
+                    .transition(.move(edge: .leading))  // slides in and out instead of popping
                 }
                 NotebookEditor(
                     notebook: notebook, search: search, navigator: navigator, isToolPickerHidden: isShowingGrid)
@@ -97,12 +102,12 @@ struct EditorView: View {
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarLeading) {
                         Button("Library", systemImage: "chevron.backward") { Task { await session.close() } }
-                        Button("Pages", systemImage: "sidebar.left") { isSidebarVisible.toggle() }
+                        Button("Pages", systemImage: "sidebar.left") {
+                            withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
+                        }
+                        Button("Page Grid", systemImage: "square.grid.2x2") { isShowingGrid = true }
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        Button("Page Grid", systemImage: "square.grid.2x2") { isShowingGrid = true }
-                        Menu("Insert", systemImage: "doc.badge.plus") { InsertMenuItems(kind: $insertKind) }
-                        Button("Add Page", systemImage: "plus.square") { actions.addPageAtEnd() }
                         Button("Search", systemImage: "magnifyingglass") {
                             if isSearching { search.clear() }
                             isSearching.toggle()

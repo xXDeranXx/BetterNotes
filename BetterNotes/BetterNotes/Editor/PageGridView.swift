@@ -34,6 +34,7 @@ struct PageGridView: View {
                     }
                 }
                 .padding(20)
+                .animation(.easeInOut(duration: 0.25), value: notebook.pages.map(\.id))
             }
             .navigationTitle(isSelecting ? "\(selectedIDs.count) selected" : "Pages")
             .navigationBarTitleDisplayMode(.inline)
@@ -128,9 +129,8 @@ struct PageGridView: View {
             if isSelecting {
                 selectionButtons
             } else {
-                AddPageButton(actions: actions)
+                AddPageButton(actions: actions, insertKind: $insertKind)
                 Spacer()
-                Menu("Insert", systemImage: "doc.badge.plus") { InsertMenuItems(kind: $insertKind) }
             }
         }
     }
@@ -145,14 +145,13 @@ struct PageGridView: View {
         }
         .disabled(!hasSelection)
         Spacer()
-        Button("Rotate Left", systemImage: "rotate.left") { actions.rotate(ids, by: -90) }
+        Button("Rotate Left", systemImage: "rotate.left") { withAnimation { actions.rotate(ids, by: -90) } }
             .disabled(!hasSelection)
-        Button("Rotate Right", systemImage: "rotate.right") { actions.rotate(ids, by: 90) }
+        Button("Rotate Right", systemImage: "rotate.right") { withAnimation { actions.rotate(ids, by: 90) } }
             .disabled(!hasSelection)
         Spacer()
         Button("Move or Copy to Notebook", systemImage: "arrowshape.turn.up.right") { isChoosingTarget = true }
             .disabled(!hasSelection)
-        Menu("Insert", systemImage: "doc.badge.plus") { InsertMenuItems(kind: $insertKind) }
         Button("Delete", systemImage: "trash", role: .destructive) {
             actions.delete(ids)
             selection = []
