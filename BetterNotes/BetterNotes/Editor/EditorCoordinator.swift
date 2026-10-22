@@ -149,7 +149,12 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         visibleOverlays[overlay.pageID] = nil
         toolPicker.removeObserver(overlay.canvas)
         // SPEC, "Data safety": a changed page is also saved when its canvas leaves the screen.
-        Task { [notebook] in await notebook.saveChanges() }
+        // Once that is done, drawings that are saved and off screen are dropped from memory.
+        Task { [weak self, notebook] in
+            await notebook.saveChanges()
+            guard let self else { return }
+            notebook.evictDrawings(keeping: Set(visibleOverlays.keys))
+        }
     }
 
     private func show(_ drawing: PKDrawing, in canvas: PKCanvasView) {

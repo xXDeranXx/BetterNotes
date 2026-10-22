@@ -103,6 +103,22 @@ final class Notebook {
         return drawing
     }
 
+    /// Pages whose drawing is currently held in memory (for tests and tuning).
+    var loadedPageIDs: Set<UUID> { Set(drawings.keys) }
+
+    /// Frees the memory of drawings that are safely on disk and not needed right now, so
+    /// scrolling through a 300-page PDF does not keep every page's ink. A drawing is only
+    /// dropped if it is not on screen, has no unsaved change (`dirtyPageIDs` is only cleared
+    /// once the write succeeded) and was read from disk without trouble (an unreadable file
+    /// keeps its empty stand-in, see `unreadablePageIDs`). The next `drawing(for:)` simply
+    /// loads it again.
+    func evictDrawings(keeping visiblePageIDs: Set<UUID>) {
+        let evictable = drawings.keys.filter {
+            !visiblePageIDs.contains($0) && !dirtyPageIDs.contains($0) && !unreadablePageIDs.contains($0)
+        }
+        for pageID in evictable { drawings[pageID] = nil }
+    }
+
     /// Replaces a page's drawing and records one undo step. This is the only way ink
     /// changes, whether it comes from a canvas (the user drew) or from undo and redo.
     ///
