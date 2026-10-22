@@ -23,6 +23,11 @@ final class LibraryModel {
     var searchText = ""
     var errorMessage: String?
 
+    /// Selection mode: tiles toggle a checkmark instead of opening, and the toolbar offers
+    /// Move and Delete for everything selected.
+    private(set) var isSelecting = false
+    private(set) var selection: Set<URL> = []
+
     private(set) var contents = FolderContents(folders: [], notebooks: [])
     private(set) var allNotebooks: [NotebookSummary] = []
     private(set) var allFolders: [FolderSummary] = []
@@ -143,12 +148,61 @@ final class LibraryModel {
     func show(folder url: URL) async {
         folder = url
         searchText = ""
+        endSelecting()
         await reload()
     }
 
     func select(_ section: LibrarySection) async {
         self.section = section
+        endSelecting()
         await reload()
+    }
+
+    // MARK: Selection
+
+    func startSelecting() { isSelecting = true; selection = [] }
+
+    func endSelecting() { isSelecting = false; selection = [] }
+
+    func toggleSelection(_ url: URL) {
+        if selection.contains(url) { selection.remove(url) } else { selection.insert(url) }
+    }
+
+    /// Everything currently shown (folders and notebooks).
+    var selectableURLs: [URL] { shownFolders.map(\.url) + shownNotebooks.map(\.url) }
+
+    var allSelected: Bool { !selectableURLs.isEmpty && selection.count == selectableURLs.count }
+
+    func selectAll() { selection = Set(selectableURLs) }
+
+    func setLayout(_ layout: LibraryLayout) { updateIndex { $0.layout = layout } }
+
+    /// Runs `work` for each item in the background. Items that fail (for example a notebook
+    /// that is open in a window) are listed in one message; the others still go through.
+    private func performEach(_ urls: [URL], _ work: @escaping @Sendable (URL) throws -> Void) async {
+        let failures = await Task.detached { () -> [String] in
+            var failed: [String] = []
+            for url in urls {
+                do { try work(url) } catch {
+                    let name = url.deletingPathExtension().lastPathComponent
+                    failed.append("\(name): \(error.localizedDescription)")
+                }
+            }
+            return failed
+        }.value
+        if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
+        endSelecting()
+        await reload()
+    }
+
+    func moveSelection(into destination: URL) async {
+        let operations = operations
+        await performEach(Array(selection)) { _ = try operations.move($0, into: destination) }
+    }
+
+    func trashSelection() async {
+        let operations = operations
+        await performEach(Array(selection)) { _ = try operations.trash($0) }
     }
 
     // MARK: Actions

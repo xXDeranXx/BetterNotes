@@ -3,6 +3,10 @@ import Foundation
 /// `.library.json`: favorites, recents and the sort choice (SPEC, "File format").
 /// Notebooks are referenced by their **id**, not by path, so a notebook moved in the Files
 /// app is still a favorite. An id that no longer exists is simply ignored by the UI.
+nonisolated enum LibraryLayout: String, Codable, Sendable {
+    case grid, list
+}
+
 nonisolated struct LibraryIndex: Codable, Equatable, Sendable {
     static let maxRecents = 10
 
@@ -11,6 +15,7 @@ nonisolated struct LibraryIndex: Codable, Equatable, Sendable {
     var recents: [UUID] = []
     var sortKey: LibrarySortKey = .name
     var sortAscending = true
+    var layout: LibraryLayout = .grid
 
     init() {}
 
@@ -22,6 +27,7 @@ nonisolated struct LibraryIndex: Codable, Equatable, Sendable {
         recents = (try? container.decodeIfPresent([UUID].self, forKey: .recents)) ?? []
         sortKey = (try? container.decodeIfPresent(LibrarySortKey.self, forKey: .sortKey)) ?? .name
         sortAscending = (try? container.decodeIfPresent(Bool.self, forKey: .sortAscending)) ?? true
+        layout = (try? container.decodeIfPresent(LibraryLayout.self, forKey: .layout)) ?? .grid
     }
 
     func isFavorite(_ id: UUID) -> Bool { favorites.contains(id) }

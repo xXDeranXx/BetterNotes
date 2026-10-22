@@ -43,6 +43,7 @@ final class ThumbnailStore {
         }
 
         await Task.yield()  // let the interface draw between two pictures
+        await TransitionGate.waitUntilIdle()  // not while a window animates
         if ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue {
             try? await Task.sleep(for: .seconds(1))  // SPEC: background work slows down when hot
         }

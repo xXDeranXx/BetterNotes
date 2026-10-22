@@ -31,6 +31,7 @@ final class CoverStore {
         }
 
         await Task.yield()
+        await TransitionGate.waitUntilIdle()
         if ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue {
             try? await Task.sleep(for: .seconds(1))
         }

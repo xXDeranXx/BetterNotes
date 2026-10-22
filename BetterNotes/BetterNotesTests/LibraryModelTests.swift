@@ -57,4 +57,73 @@ struct LibraryModelTests {
         await model.reload()
         #expect(model.shownNotebooks.map(\.title) == ["Lecture"])
     }
+
+    // MARK: Selection, bulk actions, layout
+
+    @Test func selectionTogglesSelectsAllAndEndsWhenLeavingAFolder() async throws {
+        let (model, temp) = try makeModel()
+        _ = try makeNotebook(in: temp.url, title: "A")
+        _ = try makeNotebook(in: temp.url, title: "B")
+        await model.reload()
+
+        model.startSelecting()
+        #expect(model.isSelecting && model.selection.isEmpty)
+        model.toggleSelection(model.selectableURLs[0])
+        #expect(model.selection.count == 1 && !model.allSelected)
+        model.selectAll()
+        #expect(model.allSelected)
+        model.toggleSelection(model.selectableURLs[0])
+        #expect(model.selection.count == 1)
+
+        await model.select(.favorites)
+        #expect(!model.isSelecting && model.selection.isEmpty)
+    }
+
+    @Test func movingASelectionMovesEveryItemAndEndsSelecting() async throws {
+        let (model, temp) = try makeModel()
+        let a = try makeNotebook(in: temp.url, title: "A")
+        let b = try makeNotebook(in: temp.url, title: "B")
+        let folder = try model.operations.createFolder(named: "Uni", in: temp.url)
+        await model.reload()
+
+        model.startSelecting()
+        model.toggleSelection(a.url)
+        model.toggleSelection(b.url)
+        await model.moveSelection(into: folder)
+
+        #expect(!model.isSelecting)
+        #expect(LibraryScanner.contents(of: folder).notebooks.map(\.title).sorted() == ["A", "B"])
+        #expect(model.contents.notebooks.isEmpty)
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test func trashingASelectionSkipsAnOpenNotebookAndSaysSo() async throws {
+        let temp = try TempFolder()
+        let registry = OpenNotebookRegistry()
+        let model = LibraryModel(location: LibraryLocation(root: temp.url), registry: registry)
+        let open = try makeNotebook(in: temp.url, title: "Open")
+        let other = try makeNotebook(in: temp.url, title: "Other")
+        #expect(registry.claim(open.url))
+        await model.reload()
+
+        model.startSelecting()
+        model.selectAll()
+        await model.trashSelection()
+
+        #expect(FileManager.default.fileExists(atPath: open.url.path))  // protected, still there
+        #expect(!FileManager.default.fileExists(atPath: other.url.path))  // the rest went through
+        #expect(model.errorMessage?.contains("Open") == true)
+        #expect(model.operations.trashedItems().count == 1)
+    }
+
+    @Test func layoutChoiceIsRememberedAcrossModels() async throws {
+        let temp = try TempFolder()
+        let location = LibraryLocation(root: temp.url)
+        let first = LibraryModel(location: location, registry: OpenNotebookRegistry())
+        first.setLayout(.list)
+
+        let second = LibraryModel(location: location, registry: OpenNotebookRegistry())
+        await second.reload()
+        #expect(second.index.layout == .list)
+    }
 }

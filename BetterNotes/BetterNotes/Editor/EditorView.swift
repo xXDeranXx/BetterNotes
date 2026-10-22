@@ -101,7 +101,7 @@ struct EditorView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarLeading) {
-                        Button("Library", systemImage: "chevron.backward") { Task { await session.close() } }
+                        Button("Library", systemImage: "chevron.backward") { Task { await session.closeAnimated() } }
                         Button("Pages", systemImage: "sidebar.left") {
                             withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
                         }

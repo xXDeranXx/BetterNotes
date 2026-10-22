@@ -71,7 +71,7 @@ struct CoverColorPicker: View {
 /// Where should this item go? A list of every folder, indented, plus the library itself.
 /// Folders inside the moved item are not offered.
 struct FolderPickerSheet: View {
-    let item: URL
+    let items: [URL]
     let root: URL
     let folders: [FolderSummary]
     let choose: (URL) -> Void
@@ -82,10 +82,10 @@ struct FolderPickerSheet: View {
     }
 
     private var choices: [FolderSummary] {
-        let moved = item.standardizedFileURL.path
+        let moved = items.map { $0.standardizedFileURL.path }
         return folders.filter { folder in
             let path = folder.url.standardizedFileURL.path
-            return path != moved && !path.hasPrefix(moved + "/")
+            return !moved.contains { path == $0 || path.hasPrefix($0 + "/") }
         }
         .sorted { $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending }
     }
@@ -99,7 +99,7 @@ struct FolderPickerSheet: View {
                         .padding(.leading, CGFloat(depth(folder.url)) * 22)
                 }
             }
-            .navigationTitle("Move to")
+            .navigationTitle(items.count == 1 ? "Move to" : "Move \(items.count) Items to")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) } }
         }

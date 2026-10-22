@@ -44,6 +44,8 @@ final class WindowSession {
     /// 3. the library is removed.
     func openZooming(_ package: NotebookPackage, from frame: CGRect, image: UIImage?) async throws {
         if registry.isOpen(at: package.url) { throw NotebookError.alreadyOpen }
+        TransitionGate.isActive = true
+        defer { TransitionGate.isActive = false }
         coverTransition = CoverTransition(image: image, from: frame)
         do {
             try open(package)
@@ -55,6 +57,30 @@ final class WindowSession {
         withAnimation(.smooth(duration: 0.4)) { coverTransition?.expanded = true }
         try? await Task.sleep(for: .milliseconds(450))
         coverTransition = nil
+    }
+
+    /// While the editor fades out and the library shows through (see `closeAnimated`).
+    private(set) var isClosing = false
+    private(set) var closeFaded = false
+
+    /// Closes the notebook with an animation: the library appears underneath, the editor
+    /// shrinks a little and fades out. Saving comes first, exactly as in `close()`, and if
+    /// saving fails the notebook stays open without any animation.
+    func closeAnimated() async {
+        guard let notebook, !isClosing else { return }
+        await notebook.saveChanges()
+        guard !notebook.hasUnsavedChanges else { return }
+        TransitionGate.isActive = true
+        defer { TransitionGate.isActive = false }
+        isClosing = true  // the library is built underneath
+        try? await Task.sleep(for: .milliseconds(150))  // it loads its tiles first
+        withAnimation(.easeInOut(duration: 0.3)) { closeFaded = true }
+        try? await Task.sleep(for: .milliseconds(330))
+        self.notebook = nil
+        if let claimedURL { registry.release(claimedURL) }
+        claimedURL = nil
+        isClosing = false
+        closeFaded = false
     }
 
     func open(_ package: NotebookPackage) throws {

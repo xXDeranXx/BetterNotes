@@ -14,7 +14,8 @@ struct LibraryView: View {
     @State private var isCreatingNotebook = false
     @State private var prompt: NamePrompt?
     @State private var promptText = ""
-    @State private var itemToMove: URL?
+    @State private var moveRequest: MoveRequest?
+    @State private var isConfirmingDeleteSelection = false
     @State private var itemToTrash: (url: URL, name: String)?
     @State private var dropTargetFolder: URL?
     @State private var isConfirmingEmptyTrash = false
@@ -38,7 +39,7 @@ struct LibraryView: View {
         } detail: {
             NavigationStack {
                 detail
-                    .navigationTitle(model.title)
+                    .navigationTitle(model.isSelecting ? (model.selection.isEmpty ? "Select Items" : "\(model.selection.count) Selected") : model.title)
                     .navigationBarTitleDisplayMode(.large)
                     .toolbar { toolbar }
             }
@@ -75,14 +76,20 @@ struct LibraryView: View {
                 },
                 cancel: { isCreatingNotebook = false })
         }
-        .sheet(item: Binding(get: { itemToMove.map(MoveRequest.init) }, set: { itemToMove = $0?.url })) { request in
+        .sheet(item: $moveRequest) { request in
             FolderPickerSheet(
-                item: request.url, root: model.location.root, folders: model.allFolders,
+                items: request.urls, root: model.location.root, folders: model.allFolders,
                 choose: { destination in
-                    itemToMove = nil
-                    Task { await model.move(request.url, into: destination) }
+                    moveRequest = nil
+                    Task {
+                        if request.isSelection {
+                            await model.moveSelection(into: destination)
+                        } else if let url = request.urls.first {
+                            await model.move(url, into: destination)
+                        }
+                    }
                 },
-                cancel: { itemToMove = nil })
+                cancel: { moveRequest = nil })
         }
         .alert(promptTitle, isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
             TextField("Name", text: $promptText)
@@ -113,8 +120,9 @@ struct LibraryView: View {
     }
 
     private struct MoveRequest: Identifiable {
-        let url: URL
-        var id: URL { url }
+        let id = UUID()
+        let urls: [URL]
+        var isSelection = false
     }
 
     // MARK: Sidebar
@@ -185,52 +193,94 @@ struct LibraryView: View {
     private var grid: some View {
         let folders = model.shownFolders, notebooks = model.shownNotebooks
         // A ScrollView of tiles instead of a List: a List is a UIKit collection view that
-        // handles drags itself and did not pass PDF drops on.
+        // handles drags itself and did not pass PDF drops on. The list layout is a
+        // LazyVStack for the same reason.
         return ScrollView {
             if folders.isEmpty && notebooks.isEmpty && model.hasLoaded {
                 emptyState.frame(maxWidth: .infinity).padding(.top, 80)
+            } else if model.index.layout == .list {
+                LazyVStack(spacing: 0) {
+                    ForEach(folders) { folder in
+                        folderButton(folder) {
+                            FolderRow(folder: folder, isDropTargeted: dropTargetFolder == folder.url, isSelected: selectionState(folder.url))
+                        }
+                        Divider().padding(.leading, 20)
+                    }
+                    ForEach(notebooks) { notebook in
+                        notebookButton(notebook) {
+                            NotebookRow(notebook: notebook, isFavorite: model.isFavorite(notebook), isSelected: selectionState(notebook.url))
+                        }
+                        Divider().padding(.leading, 20)
+                    }
+                }
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(20)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: libraryTileWidth + 16), spacing: 24, alignment: .top)],
                           alignment: .center, spacing: 28) {
                     ForEach(folders) { folder in
-                        Button {
-                            Task { await model.show(folder: folder.url); await model.select(.documents) }
-                        } label: {
-                            FolderTile(folder: folder, isDropTargeted: dropTargetFolder == folder.url)
-                        }
-                        .buttonStyle(.plain)
-                        .confirmationDialog("Move \"\(folder.name)\" to the trash?", isPresented: trashDialog(for: folder.url, name: folder.name), titleVisibility: .visible) {
-                            Button("Move to Trash", role: .destructive) { Task { await model.trash(folder.url) } }
-                        } message: { Text("You can put it back from the Trash for 30 days.") }
-                        .contextMenu { folderMenu(folder) }
-                        .draggable(model.dragPayload(for: folder.url))
-                        .dropDestination(for: String.self) { payloads, _ in
-                            drop(payloads, onto: folder.url)
-                        } isTargeted: { targeted in
-                            if targeted { dropTargetFolder = folder.url } else if dropTargetFolder == folder.url { dropTargetFolder = nil }
+                        folderButton(folder) {
+                            FolderTile(folder: folder, isDropTargeted: dropTargetFolder == folder.url, isSelected: selectionState(folder.url))
                         }
                     }
                     ForEach(notebooks) { notebook in
-                        Button { open(notebook) } label: {
-                            NotebookTile(notebook: notebook, isFavorite: model.isFavorite(notebook))
-                                // Remember where the tile is, to zoom its cover open from there.
-                                // A plain class, so scrolling does not re-render the grid.
-                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
-                                    tileFrames.frames[notebook.url] = $0
-                                }
+                        notebookButton(notebook) {
+                            NotebookTile(notebook: notebook, isFavorite: model.isFavorite(notebook), isSelected: selectionState(notebook.url))
                         }
-                        .buttonStyle(.plain)
-                        .confirmationDialog("Move \"\(notebook.title)\" to the trash?", isPresented: trashDialog(for: notebook.url, name: notebook.title), titleVisibility: .visible) {
-                            Button("Move to Trash", role: .destructive) { Task { await model.trash(notebook.url) } }
-                        } message: { Text("You can put it back from the Trash for 30 days.") }
-                        .contextMenu { notebookMenu(notebook) }
-                        .draggable(model.dragPayload(for: notebook.url))
                     }
                 }
                 .padding(24)
             }
         }
         .pdfDropTarget(isTargeted: $isDropTargeted, perform: handleDrop)
+    }
+
+    /// `nil` outside selection mode, otherwise whether the item is ticked.
+    private func selectionState(_ url: URL) -> Bool? {
+        model.isSelecting ? model.selection.contains(url) : nil
+    }
+
+    /// A folder as a button: opens it (or ticks it while selecting), with its menu, trash
+    /// confirmation, drag source and drop target. The same for tile and row layouts.
+    private func folderButton<Label: View>(_ folder: FolderSummary, @ViewBuilder label: () -> Label) -> some View {
+        Button {
+            if model.isSelecting {
+                model.toggleSelection(folder.url)
+            } else {
+                Task { await model.show(folder: folder.url); await model.select(.documents) }
+            }
+        } label: { label() }
+        .buttonStyle(.plain)
+        .confirmationDialog("Move \"\(folder.name)\" to the trash?", isPresented: trashDialog(for: folder.url, name: folder.name), titleVisibility: .visible) {
+            Button("Move to Trash", role: .destructive) { Task { await model.trash(folder.url) } }
+        } message: { Text("You can put it back from the Trash for 30 days.") }
+        .contextMenu { folderMenu(folder) }
+        .draggable(model.dragPayload(for: folder.url))
+        .dropDestination(for: String.self) { payloads, _ in
+            drop(payloads, onto: folder.url)
+        } isTargeted: { targeted in
+            if targeted { dropTargetFolder = folder.url } else if dropTargetFolder == folder.url { dropTargetFolder = nil }
+        }
+    }
+
+    private func notebookButton<Label: View>(_ notebook: NotebookSummary, @ViewBuilder label: () -> Label) -> some View {
+        Button {
+            if model.isSelecting { model.toggleSelection(notebook.url) } else { open(notebook) }
+        } label: {
+            label()
+                // Remember where the tile is, to zoom its cover open from there. A plain class,
+                // so scrolling does not re-render the grid.
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                    tileFrames.frames[notebook.url] = $0
+                }
+        }
+        .buttonStyle(.plain)
+        .confirmationDialog("Move \"\(notebook.title)\" to the trash?", isPresented: trashDialog(for: notebook.url, name: notebook.title), titleVisibility: .visible) {
+            Button("Move to Trash", role: .destructive) { Task { await model.trash(notebook.url) } }
+        } message: { Text("You can put it back from the Trash for 30 days.") }
+        .contextMenu { notebookMenu(notebook) }
+        .draggable(model.dragPayload(for: notebook.url))
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -269,7 +319,19 @@ struct LibraryView: View {
                     } message: {
                         Text("This cannot be undone.")
                     }
+            } else if model.isSelecting {
+                Button(model.allSelected ? "Select None" : "Select All") {
+                    if model.allSelected { model.endSelecting(); model.startSelecting() } else { model.selectAll() }
+                }
+                Button("Done") { model.endSelecting() }.fontWeight(.semibold)
             } else {
+                Button("Select") { model.startSelecting() }
+                Button {
+                    model.setLayout(model.index.layout == .grid ? .list : .grid)
+                } label: {
+                    Label(model.index.layout == .grid ? "Show as List" : "Show as Grid",
+                          systemImage: model.index.layout == .grid ? "list.bullet" : "square.grid.2x2")
+                }
                 Menu {
                     Picker("Sort by", selection: Binding(get: { model.index.sortKey }, set: {
                         model.setSort($0, ascending: model.index.sortAscending)
@@ -300,6 +362,25 @@ struct LibraryView: View {
                 }
             }
         }
+        // Bulk actions while selecting. The confirmation is attached to the Delete button, so
+        // its popover points at it.
+        ToolbarItemGroup(placement: .bottomBar) {
+            if model.isSelecting {
+                Button("Move to…", systemImage: "folder") {
+                    moveRequest = MoveRequest(urls: Array(model.selection), isSelection: true)
+                }
+                .disabled(model.selection.isEmpty)
+                Spacer()
+                Button("Delete", systemImage: "trash", role: .destructive) { isConfirmingDeleteSelection = true }
+                    .disabled(model.selection.isEmpty)
+                    .confirmationDialog(
+                        "Move \(model.selection.count) \(model.selection.count == 1 ? "item" : "items") to the trash?",
+                        isPresented: $isConfirmingDeleteSelection, titleVisibility: .visible
+                    ) {
+                        Button("Move to Trash", role: .destructive) { Task { await model.trashSelection() } }
+                    } message: { Text("You can put them back from the Trash for 30 days.") }
+            }
+        }
     }
 
     @ViewBuilder private func notebookMenu(_ notebook: NotebookSummary) -> some View {
@@ -313,7 +394,7 @@ struct LibraryView: View {
             prompt = .rename(notebook.url, notebook.title)
         }
         Button("Duplicate", systemImage: "plus.square.on.square") { Task { await model.duplicate(notebook.url) } }
-        Button("Move to…", systemImage: "folder") { itemToMove = notebook.url }
+        Button("Move to…", systemImage: "folder") { moveRequest = MoveRequest(urls: [notebook.url]) }
         Menu("Cover Color", systemImage: "paintpalette") {
             ForEach(LibraryModel.coverColors, id: \.self) { hex in
                 Button { Task { await model.setCoverColor(hex, for: notebook.url) } } label: {
@@ -333,7 +414,7 @@ struct LibraryView: View {
             promptText = folder.name
             prompt = .rename(folder.url, folder.name)
         }
-        Button("Move to…", systemImage: "folder") { itemToMove = folder.url }
+        Button("Move to…", systemImage: "folder") { moveRequest = MoveRequest(urls: [folder.url]) }
         Divider()
         Button("Move to Trash", systemImage: "trash", role: .destructive) {
             itemToTrash = (folder.url, folder.name)
