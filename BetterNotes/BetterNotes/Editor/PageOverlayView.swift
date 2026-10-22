@@ -57,10 +57,35 @@ final class PageOverlayView: UIView {
 
         for layer in [objectsLayer, canvas, previewLayer] as [UIView] {
             layer.frame = bounds
-            layer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             addSubview(layer)
+        }
+        // The canvas is laid out by hand (see `layoutSubviews`); the other layers follow the page.
+        for layer in [objectsLayer, previewLayer] {
+            layer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// How much sharper than the page the canvas renders (1 = the page's own size).
+    /// PencilKit draws ink at the resolution of its scroll view's `zoomScale`, and ignores
+    /// `contentScaleFactor`. So the canvas is made `renderScale` times bigger, zoomed by the
+    /// same factor, and shrunk back with a transform: it covers the page exactly, and the
+    /// drawing's coordinates stay in unzoomed page points.
+    var renderScale: CGFloat = 1 {
+        didSet { if renderScale != oldValue { setNeedsLayout() } }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let scale = renderScale
+        canvas.transform = .identity  // frame and bounds are only meaningful without a transform
+        canvas.bounds = CGRect(
+            x: 0, y: 0, width: bounds.width * scale, height: bounds.height * scale)
+        canvas.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        canvas.minimumZoomScale = scale
+        canvas.maximumZoomScale = scale
+        if canvas.zoomScale != scale { canvas.zoomScale = scale }
+        canvas.transform = CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)
+    }
 }

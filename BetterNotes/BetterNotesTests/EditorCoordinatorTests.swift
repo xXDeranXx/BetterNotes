@@ -153,13 +153,26 @@ struct EditorCoordinatorTests {
     }
 
     @Test func canvasRenderScaleFollowsTheZoomButIsCapped() {
-        // A retina iPad (2x): at the fit-to-width zoom of about 1.36 the canvas needs 3x.
-        #expect(EditorCoordinator.renderScale(zoom: 1, screenScale: 2) == 2)
-        #expect(EditorCoordinator.renderScale(zoom: 1.36, screenScale: 2) == 3)
-        #expect(EditorCoordinator.renderScale(zoom: 2, screenScale: 2) == 4)
-        // Never below the screen scale, even when zoomed out.
-        #expect(EditorCoordinator.renderScale(zoom: 0.5, screenScale: 2) == 2)
-        // Capped, so a deep zoom cannot allocate a huge canvas.
-        #expect(EditorCoordinator.renderScale(zoom: 6, screenScale: 2) == EditorCoordinator.maxRenderScale)
+        #expect(EditorCoordinator.renderScale(zoom: 0.5) == 1)  // zoomed out: never below the page size
+        #expect(EditorCoordinator.renderScale(zoom: 1.36) == 2)  // fit to width on an iPad
+        #expect(EditorCoordinator.renderScale(zoom: 3) == 3)
+        #expect(EditorCoordinator.renderScale(zoom: 6) == 6)
+        #expect(EditorCoordinator.renderScale(zoom: 50) == EditorCoordinator.maxRenderScale)
+    }
+
+    @Test func aMagnifiedCanvasStillCoversExactlyThePageAndKeepsPageCoordinates() {
+        let overlay = PageOverlayView(pageID: UUID())
+        overlay.frame = CGRect(x: 0, y: 0, width: 595, height: 842)
+        overlay.renderScale = 3
+        overlay.layoutIfNeeded()
+
+        // The canvas is 3x bigger inside, shrunk back by 1/3: on screen it is the page.
+        #expect(overlay.canvas.bounds.size == CGSize(width: 595 * 3, height: 842 * 3))
+        let onScreen = overlay.convert(overlay.canvas.bounds, from: overlay.canvas)
+        #expect(abs(onScreen.width - 595) < 0.001 && abs(onScreen.height - 842) < 0.001)
+        #expect(abs(onScreen.minX) < 0.001 && abs(onScreen.minY) < 0.001)
+        #expect(overlay.canvas.zoomScale == 3)
+        // A point in page coordinates is where the drawing keeps it, whatever the render scale.
+        #expect(overlay.canvas.convert(CGPoint(x: 300, y: 400), from: overlay.canvas) == CGPoint(x: 300, y: 400))
     }
 }

@@ -36,6 +36,9 @@ final class NotebookEditorViewController: UIViewController {
 
     override func loadView() {
         view = UndoRoutingView(notebook: notebook)
+        // Pages are white, so the tool picker shows ink colors as they come out on the page.
+        // Otherwise, in dark mode, its black swatch looks white but writes black.
+        coordinator.toolPicker.overrideUserInterfaceStyle = .light
     }
 
     override func viewDidLoad() {
