@@ -126,6 +126,7 @@ struct EraserOptionsView: View {
 /// Where the toolbar sits, which pens it shows, and the gestures.
 struct ToolbarSettingsView: View {
     @Bindable var tools: ToolController
+    @AppStorage(DebugOverlay.settingKey) private var showsDebugOverlay = false
 
     var body: some View {
         NavigationStack {
@@ -167,6 +168,10 @@ struct ToolbarSettingsView: View {
                     Toggle("Use the system tool palette", isOn: $tools.settings.usesSystemToolPicker)
                 } footer: {
                     Text("The system palette has more brushes but looks different. Switch back if the own toolbar misses something.")
+                }
+                // Temporary, removed together with the Debug folder.
+                Section("Debug") {
+                    Toggle("Show debug overlay", isOn: $showsDebugOverlay)
                 }
             }
             .navigationTitle("Toolbar")

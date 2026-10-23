@@ -23,6 +23,7 @@ struct RootView: View {
                     .allowsHitTesting(!session.isOpening && !session.isClosing)
             }
         }
+        .debugOverlay()  // temporary, see Debug/
         .environment(session)
         // "Open in BetterNotes" from the share sheet or the Files app arrives here as a URL.
         // Like a route change in a React app: the system hands the window a URL and the

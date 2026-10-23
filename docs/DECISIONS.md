@@ -89,6 +89,20 @@ Decided:
   - **Not now**: restoring tabs after a relaunch, and dragging tabs between windows. Tab state stays per window (architecture decision 5).
   - **Order**: debug overlay first (needed to measure memory and heat with tabs), then tabs, then M9 with bring-forward built on the new registry.
 - **Whiteboard, design (decided 2026-10-23):** spike direction **(c): one `PKCanvasView` used as its own scroll view**, outside `PDFView`. A large board (about 10000 x 10000 pt, starting in the middle), one `PKDrawing`. `PKCanvasView` renders only what is visible and zooms sharp by itself (no `k` multiplier), and the lasso, shapes and snapping work unchanged. Images and text boxes go in a layer below the canvas that follows its scroll and zoom. Rejected for now: (a) one huge PDF page (capped at 14400 pt, and the `k` multiplier up to 6x on a huge page needs its own cap) and (b) tiles (strokes, lasso and snapping across tile borders). **Format**: still a `.inkbook` package, with an optional `kind` in `meta.json` (`notebook` by default, or `whiteboard`) and format version 4 (`meta.v3.json` kept), so the library, trash, backup and covers keep working. Page management (M4) does not apply; export is the bounding box of the ink. **The spike comes first** (memory, heat and frame rate with a lot of ink, measured on the iPad with the debug overlay). Undo works on the model, as everywhere.
+- **Debug overlay (built 2026-10-23; iPad check pending):**
+  - **Decisions** (asked before building): the panel shows on **every screen** (in `RootView`, so the library and later tabs are measured too), with **app counters** and **CSV recording**.
+  - **Code**: all of it lives in `Debug/` (`ProcessMetrics`, `DebugMonitor`, `DebugRecorder`, `DebugOverlay`). There are two hooks: `.debugOverlay()` in `RootView`, and the "Debug" section with "Show debug overlay" (`@AppStorage("showsDebugOverlay")`) in `ToolbarSettingsView`. Tests are in `DebugOverlayTests`. To remove it, delete those three things.
+  - **Values**, once per second:
+    - CPU summed over the app's threads (`thread_basic_info.cpu_usage`, percent of one core, can exceed 100).
+    - Memory: `phys_footprint`, plus `os_proc_available_memory` ("left"; 0 in the simulator, so it is hidden there).
+    - FPS and the longest frame gap, from `CADisplayLink` on the main thread.
+    - Thermal state, with a colored dot.
+    - Per window: canvases (the `PageOverlayView`s found in the window's views), the highest canvas multiplier `k`, and loaded drawings per page count (`Notebook.loadedPageIDs`). The editor needs no debug hooks.
+  - **Monitor**: one `DebugMonitor.shared` for the app (CPU and memory belong to the process). It runs only while a panel is on screen.
+  - **Caveats**: the display link may keep a ProMotion screen at 120 Hz, so always compare measurements with the panel on. The panel does not show above sheets or full-screen covers. GPU use is not available.
+  - **Recording**: "Record" writes `Application Support/Debug/debug-<date>.csv` (columns `time,elapsed_s,cpu_percent,memory_mb,available_mb,fps,longest_frame_ms,thermal,canvases,render_scale,loaded_drawings,pages`, dot as decimal point). It is not in Documents, because the library would show it as a folder and backups would include it. The panel's "Files" menu shares a recording through the share sheet, or deletes them all.
+  - **Panel**: tap folds it to one line; drag moves it to another corner (remembered).
+  - Checked in the simulator with screenshots. 415 unit tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones
