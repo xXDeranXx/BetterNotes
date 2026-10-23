@@ -5,6 +5,7 @@ import SwiftUI
 /// A plain `let` would create a new session each time SwiftUI rebuilds the view.
 struct RootView: View {
     @State private var session = WindowSession()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         // While a notebook opens or closes, the library stays underneath and the editor fades
@@ -18,6 +19,9 @@ struct RootView: View {
                 // grow or shrink; the library shows through in between.
                 let shown = session.isOpening ? session.openRevealed : !session.closeFaded
                 EditorView(notebook: notebook)
+                    // A new editor (with fresh @State) for each tab; without the id SwiftUI
+                    // would keep the old one and only hand it the other notebook.
+                    .id(session.activeTabID)
                     .opacity(shown ? 1 : 0)
                     .scaleEffect(shown ? 1 : 0.94)
                     .allowsHitTesting(!session.isOpening && !session.isClosing)
@@ -28,6 +32,11 @@ struct RootView: View {
         // "Open in BetterNotes" from the share sheet or the Files app arrives here as a URL.
         // Like a route change in a React app: the system hands the window a URL and the
         // window decides what to show.
+        // The editor saves the shown notebook; background tabs that still hold a model are
+        // saved here (a second save of the shown one finds nothing to do).
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { session.saveAllInBackground() }
+        }
         .onOpenURL { url in
             Task { await session.importPDFs([url]) }
         }

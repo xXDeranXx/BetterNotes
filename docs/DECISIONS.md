@@ -120,6 +120,15 @@ Decided:
     5. Restore on launch.
     6. A UI test (two notebooks, write, switch, undo in the background tab, force-quit, reopen).
   - **On the iPad**, with the debug overlay: memory with 1, 3, 5 and 10 tabs, switch speed, CPU near 0 for background tabs; this sets the number of loaded tabs.
+- **Tabs, steps 1 and 2 (built 2026-10-23):**
+  - **Registry**: `OpenNotebookRegistry` maps URL -> `NotebookOwner?` (window id, tab id). A claim without an owner is `PageTransfer`'s short one. New: `owner(of:)` and `releaseAll(ownedBy:)`.
+  - **`NotebookTab`**: id, URL, title, an optional `Notebook` (nil = released), `position` (`TabPosition`: page id, point, zoom), `lastUsed`.
+  - **`WindowSession`**: `tabs`, `activeTabID` (nil = library), and `notebook` as the active tab's model. `open` makes a new tab, or selects this window's tab for the notebook (found through the registry, so another path to it works too), or refuses one owned by another window. `select` reloads a released tab; one whose notebook is gone loses its tab and throws. `showLibrary`, `closeTab` (saves first; a failed save keeps the tab; closing the shown tab shows its right neighbour, else the left, else the library), `closeOtherTabs`, `moveTab`. `importPDFs` opens a new tab. `deinit` releases every tab.
+  - **Change from the plan: switching tabs never waits for a save.** A loaded background tab keeps its model and its autosave, so nothing can be lost by switching. The tab that goes to the background starts a save at once. Only **releasing** needs a successful save: beyond `loadedTabLimit` (3, counting the active tab), the oldest tabs are saved one after another (`releaseTask`) and dropped only if the save worked; otherwise they stay loaded.
+  - **When the app leaves the foreground**, `RootView` saves every loaded tab (`saveAllInBackground`).
+  - **Editor**: `EditorView` gets `.id(activeTabID)`, so each tab builds a fresh editor.
+  - **Temporary**: `closeAnimated` keeps the back button closing the tab until the strip exists (step 3).
+  - 434 unit tests and all UI tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones
