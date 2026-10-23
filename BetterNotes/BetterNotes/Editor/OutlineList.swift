@@ -151,6 +151,7 @@ struct OutlineList: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .disabled(notebook.outline == nil || isGenerating)  // the PDF's own titles come first
             Menu {
                 if hasPDFPages {
                     Button("Generate from Text", systemImage: "text.magnifyingglass") { generate() }

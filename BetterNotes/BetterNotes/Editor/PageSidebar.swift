@@ -176,7 +176,10 @@ struct PageSidebar: View {
         ) {
             TextField("Title", text: $outlineTitle)
             Button("Add") {
-                if let page = outlinePage { notebook.addOutlineEntry(title: outlineTitle, pageID: page) }
+                if let page = outlinePage {
+                    let title = outlineTitle
+                    Task { await notebook.addToOutline(title: title, pageID: page) }
+                }
                 outlinePage = nil
             }
             Button("Cancel", role: .cancel) { outlinePage = nil }

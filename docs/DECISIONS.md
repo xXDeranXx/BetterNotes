@@ -221,6 +221,7 @@ Decided:
   - **"Open in":** a `.inkbook` inside the library that arrives as a URL (tapped in the Files app) opens in a tab or brings its window forward; anything else is imported as before into the window that received it (every import is a new notebook, so no routing is needed).
   - **Drag and drop between windows:** a page dragged from another window's sidebar or grid onto a page here is **copied** before it (ink, images, text; one undo step here; the other notebook is only read). Notebooks and folders dragged between two windows' libraries already moved, because the payload is a path relative to the library root.
   - Tests: `WindowDirectoryTests`; two tests now expect `openInOtherWindow`. 472 unit tests and both UI tests pass.
+- **M9, found in review before the handover:** adding the first outline entry from the Pages tab (or the footer while the outline was still loading) made the outline non-empty, so a PDF's own titles were never set up. Now the interface calls `addToOutline`, which sets the outline up first, and the footer button waits for it. The outline is read from the saved `document.pdf` when there is no unsaved page change (no `dataRepresentation()` on the main thread). "Open in" compares paths through `OpenNotebookRegistry.key` (`/private/var` vs `/var`). A test exports text pages, a scan, a rotated page and ink with an outline: text stays text, the size stays within 10 % (the scan JPEG is not re-encoded), the rotated page keeps its size. 474 unit tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

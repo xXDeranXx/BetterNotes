@@ -12,19 +12,27 @@ extension Notebook {
 
     /// Fills the outline the first time it is needed: from the PDF's own bookmarks, or else
     /// guessed from the text of its pages. A notebook made only from templates starts empty.
-    /// The PDF is read off the main thread from its bytes, so a 300-page PDF does not stall
-    /// the pen. Does nothing when the outline was set up before.
+    /// The PDF is read off the main thread, so a 300-page PDF does not stall the pen. Does
+    /// nothing when the outline was set up before.
     func setUpOutlineIfNeeded() async {
         guard outline == nil else { return }
-        guard pages.contains(where: { $0.template == .pdf }), let data = document?.dataRepresentation() else {
+        guard pages.contains(where: { $0.template == .pdf }), let source = pdfSourceForReading() else {
             setUpOutline([])
             return
         }
         let pageIDs = pages.map(\.id)
-        let entries = await Task.detached(priority: .utility) { Self.readOutline(pdfData: data, pageIDs: pageIDs) }.value
+        let entries = await Task.detached(priority: .utility) { Self.readOutline(source, pageIDs: pageIDs) }.value
         // Pages may have changed meanwhile: keep only entries whose page still exists.
         let present = Set(pages.map(\.id))
         setUpOutline(entries.filter { present.contains($0.pageID) })
+    }
+
+    /// What the interface calls: sets the outline up first (so a PDF's own titles are never
+    /// skipped because the first entry was added from the Pages tab), then adds the entry.
+    @discardableResult
+    func addToOutline(title: String, pageID: UUID) async -> UUID? {
+        await setUpOutlineIfNeeded()
+        return addOutlineEntry(title: title, pageID: pageID)
     }
 
     /// Adds an entry for a page, after the entries already on that page. Its level is the one
@@ -65,9 +73,9 @@ extension Notebook {
     /// Text"). Undoable. Returns how many entries were found; with none, nothing changes.
     @discardableResult
     func regenerateOutlineFromText() async -> Int {
-        guard let data = document?.dataRepresentation() else { return 0 }
+        guard let source = pdfSourceForReading() else { return 0 }
         let pageIDs = pages.map(\.id)
-        let entries = await Task.detached(priority: .userInitiated) { Self.readOutline(pdfData: data, pageIDs: pageIDs) }.value
+        let entries = await Task.detached(priority: .userInitiated) { Self.readOutline(source, pageIDs: pageIDs) }.value
         let present = Set(pages.map(\.id))
         let found = entries.filter { present.contains($0.pageID) }
         // Nothing found (a scan): keep what is there instead of wiping it.
@@ -79,9 +87,27 @@ extension Notebook {
         setOutline([], actionName: "Clear Outline")
     }
 
+    /// Where a background task can read the pages from: the saved `document.pdf` when it matches
+    /// the page list (no unsaved page change), else the PDF's bytes (made here, on the main
+    /// thread, which costs time on a big PDF; only right after a page operation).
+    nonisolated enum PDFSource: Sendable {
+        case file(URL)
+        case data(Data)
+    }
+
+    private func pdfSourceForReading() -> PDFSource? {
+        if !structureDirty { return .file(package.pdfURL) }
+        return document?.dataRepresentation().map { .data($0) }
+    }
+
     /// The PDF's bookmarks, or else an outline guessed from its text. Runs off the main thread.
-    nonisolated private static func readOutline(pdfData: Data, pageIDs: [UUID]) -> [OutlineEntry] {
-        guard let copy = PDFDocument(data: pdfData) else { return [] }
+    nonisolated private static func readOutline(_ source: PDFSource, pageIDs: [UUID]) -> [OutlineEntry] {
+        let copy: PDFDocument?
+        switch source {
+        case .file(let url): copy = PDFDocument(url: url)
+        case .data(let data): copy = PDFDocument(data: data)
+        }
+        guard let copy, copy.pageCount == pageIDs.count else { return [] }
         let bookmarks = Outline.entries(fromBookmarksOf: copy, pageIDs: pageIDs)
         return bookmarks.isEmpty ? Outline.entries(guessedFrom: copy, pageIDs: pageIDs) : bookmarks
     }

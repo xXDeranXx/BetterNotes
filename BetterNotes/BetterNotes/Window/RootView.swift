@@ -74,8 +74,11 @@ struct RootView: View {
         .onOpenURL { url in
             // A notebook of the library (for example tapped in the Files app) opens in a tab, or
             // brings forward the window that has it; anything else is imported as a PDF.
+            // Compared through `OpenNotebookRegistry.key`: Files may hand over /private/var/...
+            // for the /var/... of the library (or the reverse).
             if url.pathExtension == NotebookPackage.fileExtension,
-                url.standardizedFileURL.path.hasPrefix(LibraryLocation.documents.root.standardizedFileURL.path + "/")
+                OpenNotebookRegistry.key(url).path.hasPrefix(
+                    OpenNotebookRegistry.key(LibraryLocation.documents.root).path + "/")
             {
                 do { try session.open(NotebookPackage(url: url)) } catch NotebookError.openInOtherWindow {
                 } catch { session.importError = error.localizedDescription }

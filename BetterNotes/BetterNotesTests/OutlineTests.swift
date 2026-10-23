@@ -1,5 +1,6 @@
 import Foundation
 import PDFKit
+import PencilKit
 import Testing
 import UIKit
 @testable import BetterNotes
@@ -240,5 +241,55 @@ struct NotebookOutlineTests {
         let withOutline = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize!
         let without = try plain.resourceValues(forKeys: [.fileSizeKey]).fileSize!
         #expect(Double(withOutline) < Double(without) * 1.1 + 2000)
+    }
+    @Test func addingBeforeTheOutlineWasSetUpKeepsThePDFsTitles() async throws {
+        let folder = try TempFolder()
+        let source = try makeSlidesPDF(in: folder.url, titles: ["Groups", "Rings"])
+        let package = try NotebookPackage.importPDF(from: source, in: folder.url, title: "Algebra", coverColor: "#000000")
+        let notebook = try Notebook.open(package)
+        #expect(notebook.outline == nil)
+        await notebook.addToOutline(title: "My note", pageID: notebook.pages[1].id)
+        #expect(notebook.visibleOutline.map(\.title) == ["Groups", "Rings", "My note"])
+        notebook.undoManager.undo()
+        #expect(notebook.visibleOutline.map(\.title) == ["Groups", "Rings"])
+    }
+
+    @Test func exportWithAnOutlineKeepsTextScansAndRotation() async throws {
+        let folder = try TempFolder()
+        let source = try makeSlidesPDF(in: folder.url, titles: ["Groups", "Rings"])
+        let package = try NotebookPackage.importPDF(from: source, in: folder.url, title: "Mixed", coverColor: "#000000")
+        let notebook = try Notebook.open(package)
+        // A scanned page (an embedded JPEG of noise, so its size is easy to see).
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let noise = UIGraphicsImageRenderer(size: CGSize(width: 1500, height: 2000), format: format).image { context in
+            for _ in 0..<8000 {
+                UIColor(white: .random(in: 0...0.8), alpha: 1).setFill()
+                context.fill(CGRect(x: .random(in: 0..<1500), y: .random(in: 0..<2000), width: 20, height: 6))
+            }
+        }
+        let scan = try #require(PDFDocument(data: try ScanPages.pdfData(fromJPEGs: [try ScanPages.jpegData(for: noise)])))
+        try notebook.insertPages(try Notebook.makeEntries(from: scan), at: 2)
+        try notebook.rotatePages([notebook.pages[1].id], by: 90)
+        notebook.setDrawing(sampleDrawing(), for: notebook.pages[0].id)
+        await notebook.setUpOutlineIfNeeded()
+        #expect(notebook.visibleOutline.count == 2)
+
+        let withOutline = try await NotebookExporter.export(notebook)
+        defer { NotebookExporter.discard(withOutline) }
+        notebook.clearOutline()
+        let without = try await NotebookExporter.export(notebook)
+        defer { NotebookExporter.discard(without) }
+
+        let exported = try #require(PDFDocument(url: withOutline))
+        #expect(exported.pageCount == 3)
+        #expect(exported.page(at: 0)?.string?.contains("Groups") == true)  // still text
+        let rotated = try #require(exported.page(at: 1))
+        let size = PageRenderer.displayedSize(of: rotated)
+        #expect(abs(size.width - 595) < 1 && abs(size.height - 842) < 1)  // landscape slide turned upright
+        #expect(Outline.entries(fromBookmarksOf: exported, pageIDs: notebook.pages.map(\.id)).count == 2)
+        let a = try withOutline.resourceValues(forKeys: [.fileSizeKey]).fileSize!
+        let b = try without.resourceValues(forKeys: [.fileSizeKey]).fileSize!
+        #expect(Double(a) < Double(b) * 1.1 + 2000, "with outline \(a) bytes, without \(b) bytes")
     }
 }
