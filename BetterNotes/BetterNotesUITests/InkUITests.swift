@@ -107,6 +107,15 @@ extension InkUITests {
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.4), "whiteboard: stroke A is missing")
         XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.5), "whiteboard: the undone stroke came back")
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.6), "whiteboard: stroke C is missing")
+
+        // A finger held on an empty spot offers our Paste, not PencilKit's "Select All / Insert
+        // Space" (seen on the iPad). The simulator shares its clipboard with the test.
+        UIPasteboard.general.string = "Pasted on the board"
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.75)).press(forDuration: 1.2)
+        XCTAssertTrue(app.menuItems["Paste"].waitForExistence(timeout: 3), "whiteboard: no Paste after holding a finger")
+        XCTAssertFalse(app.menuItems["Insert Space"].exists, "whiteboard: PencilKit's menu came instead")
+        app.menuItems["Paste"].tap()
+        sleep(1)
     }
 }
 

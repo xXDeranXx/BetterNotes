@@ -310,6 +310,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         // only its drawing is off (above).
         let canvasTakesTouches = overlay.isBoard || !(selectsObjects || placesText)
         if canvas.isUserInteractionEnabled != canvasTakesTouches { canvas.isUserInteractionEnabled = canvasTakesTouches }
+        overlay.deferCanvasLongPresses()  // PencilKit may have added its selection layer since
         // A finger long press selects an object, or offers Paste on an empty spot; not while
         // fingers draw. With the select tool it only offers Paste (drags own the objects there).
         overlay.objectLongPress.isEnabled = !allowsFingerDrawing && !usesSystemToolPicker

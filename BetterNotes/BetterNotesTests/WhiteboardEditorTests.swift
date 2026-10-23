@@ -148,6 +148,13 @@ struct WhiteboardEditorTests {
         #expect(visible.contains(object.frame))
     }
 
+    @Test func aTwoFingerTapCountsOnlyWhenNothingMoved() {
+        let start = ScrollSnapshot(zoom: 1, offset: CGPoint(x: 4000, y: 4000))
+        #expect(start.isStill(comparedTo: ScrollSnapshot(zoom: 1.005, offset: CGPoint(x: 4002, y: 4001))))
+        #expect(!start.isStill(comparedTo: ScrollSnapshot(zoom: 1.08, offset: CGPoint(x: 4000, y: 4000))))  // a pinch
+        #expect(!start.isStill(comparedTo: ScrollSnapshot(zoom: 1, offset: CGPoint(x: 4030, y: 4000))))  // a scroll
+    }
+
     @Test func aNotebookPageKeepsItsOwnCoordinates() {
         let overlay = PageOverlayView(pageID: UUID())
         #expect(!overlay.isBoard && overlay.pageSpace === overlay && overlay.editingHost === overlay)

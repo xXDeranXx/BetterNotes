@@ -36,6 +36,26 @@ final class UndoRoutingView: UIView {
     }
 }
 
+/// Where a scroll view was: its zoom and offset. Two snapshots tell whether it moved.
+struct ScrollSnapshot: Equatable {
+    var zoom: CGFloat
+    var offset: CGPoint
+
+    init(zoom: CGFloat, offset: CGPoint) {
+        self.zoom = zoom
+        self.offset = offset
+    }
+
+    init(_ scrollView: UIScrollView) {
+        self.init(zoom: scrollView.zoomScale, offset: scrollView.contentOffset)
+    }
+
+    /// Still: zoom changed by less than 1 % and the offset by less than 4 points.
+    func isStill(comparedTo now: ScrollSnapshot) -> Bool {
+        abs(now.zoom - zoom) < 0.01 * max(zoom, 0.01) && hypot(now.offset.x - offset.x, now.offset.y - offset.y) < 4
+    }
+}
+
 /// Shows a notebook's PDF with a canvas over every visible page, or a whiteboard: one overlay
 /// in board mode that fills the editor (its canvas scrolls and zooms the board itself).
 final class NotebookEditorViewController: UIViewController, UIGestureRecognizerDelegate, UIPencilInteractionDelegate {
@@ -275,6 +295,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             tap.cancelsTouchesInView = false
             tap.delegate = self
             view.addGestureRecognizer(tap)
+            undoRedoTaps.append(tap)
         }
         view.addInteraction(UIPencilInteraction(delegate: self))
         // Tracks the hovering Pencil (iPads that support hover) so the palette can open at its tip.
@@ -327,6 +348,25 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool { true }
+
+    /// The two- and three-finger taps, and where the content was when their first finger came
+    /// down. A short pinch can look like a two-finger tap; on the iPad zooming a whiteboard
+    /// sometimes undid a stroke. A tap only counts if nothing scrolled or zoomed meanwhile.
+    private var undoRedoTaps: [UITapGestureRecognizer] = []
+    private var scrollAtTapStart: ScrollSnapshot?
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if undoRedoTaps.contains(where: { $0 === gestureRecognizer }), gestureRecognizer.numberOfTouches == 0 {
+            scrollAtTapStart = contentScrollView.map(ScrollSnapshot.init)
+        }
+        return true
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard undoRedoTaps.contains(where: { $0 === gestureRecognizer }), let scrollView = contentScrollView else { return true }
+        return !scrollView.isZooming && !scrollView.isZoomBouncing
+            && (scrollAtTapStart?.isStill(comparedTo: ScrollSnapshot(scrollView)) ?? true)
+    }
 
     func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
         onPencilAction?(UIPencilInteraction.preferredTapAction, tap.hoverPose.map { $0.location })

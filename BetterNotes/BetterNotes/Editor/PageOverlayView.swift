@@ -325,6 +325,7 @@ final class PageOverlayView: UIView {
         if isBoard {
             // The canvas scrolls and zooms by itself and stays sharp; no `renderScale` here.
             syncBoardLayers()
+            deferCanvasLongPresses()
             return
         }
         let scale = renderScale
@@ -371,6 +372,26 @@ final class PageOverlayView: UIView {
         }
         CATransaction.commit()
     }
+
+    /// On a board the canvas keeps finger touches (it is the scroll view), so PencilKit's own
+    /// finger long presses (in its selection layer: the "Select All / Insert Space" menu, seen on
+    /// the iPad) competed with ours, which selects an object or offers Paste. PencilKit's now
+    /// wait until ours has failed. Only finger ones: the Pencil's own long press stays.
+    func deferCanvasLongPresses() {
+        guard isBoard else { return }
+        var views: [UIView] = [canvas]
+        while let view = views.popLast() {
+            views.append(contentsOf: view.subviews)
+            for case let press as UILongPressGestureRecognizer in view.gestureRecognizers ?? []
+            where press !== objectLongPress && !deferredLongPresses.contains(ObjectIdentifier(press)) {
+                let types = press.allowedTouchTypes.map(\.intValue)
+                guard types.isEmpty || types.contains(UITouch.TouchType.direct.rawValue) else { continue }
+                press.require(toFail: objectLongPress)
+                deferredLongPresses.insert(ObjectIdentifier(press))
+            }
+        }
+    }
+    private var deferredLongPresses: Set<ObjectIdentifier> = []
 
     /// The board's pattern, behind the objects (they and the ink lie on top of it).
     var boardBackground: BoardBackground = .plain {
