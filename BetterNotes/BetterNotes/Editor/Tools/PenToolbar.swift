@@ -6,6 +6,8 @@ import SwiftUI
 /// settings in `ToolController`.
 struct PenToolbar: View {
     @Bindable var tools: ToolController
+    /// The image menu's choice (Photos, Files, clipboard); the editor screen handles it.
+    var onInsertImage: (ImageSource) -> Void = { _ in }
     /// The length the toolbar may take along its direction (the editor's width at the top, its
     /// height at a side). The buttons shrink to fit it, and below the smallest size it scrolls.
     var availableLength: CGFloat = .infinity
@@ -67,8 +69,8 @@ struct PenToolbar: View {
     /// The outer padding (8 on each side) and the padding inside the background (8 on each side).
     private static let padding: CGFloat = 32
 
-    /// Buttons: the pens, eraser, lasso, shapes, text box, ruler, presets, settings, hide.
-    private var buttonCount: Int { tools.settings.enabledPens.count + 8 }
+    /// Buttons: the pens, eraser, lasso, shapes, text box, image, ruler, presets, settings, hide.
+    private var buttonCount: Int { tools.settings.enabledPens.count + 9 }
     /// Two dividers between the groups.
     private static let dividerCount = 2
 
@@ -119,6 +121,7 @@ struct PenToolbar: View {
             icon("character.textbox", isSelected: false)
                 .opacity(0.35)
                 .accessibilityLabel("Text box (coming later)")
+            imageMenu
             Button {
                 tools.isRulerActive.toggle()
             } label: {
@@ -200,6 +203,20 @@ struct PenToolbar: View {
     private func toolButton(_ choice: ToolChoice, symbol: String, label: String) -> some View {
         Button { tools.select(choice) } label: { icon(symbol, isSelected: tools.settings.selected == choice) }
             .accessibilityLabel(label)
+    }
+
+    /// Puts an image on the page on screen (M8).
+    private var imageMenu: some View {
+        Menu {
+            Button("Photos", systemImage: "photo.on.rectangle") { onInsertImage(.photos) }
+            Button("Files", systemImage: "folder") { onInsertImage(.files) }
+            // Not disabled when the clipboard is empty: the menu is built before it opens, so
+            // that state could be out of date. Pasting explains it instead.
+            Button("Paste", systemImage: "doc.on.clipboard") { onInsertImage(.clipboard) }
+        } label: {
+            icon("photo", isSelected: false)
+        }
+        .accessibilityLabel("Insert image")
     }
 
     /// Saved pens: one tap switches to that exact pen.

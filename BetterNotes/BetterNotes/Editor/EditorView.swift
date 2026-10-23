@@ -8,12 +8,16 @@ struct NotebookEditor: UIViewControllerRepresentable {
     let search: DocumentSearch
     let navigator: PageNavigator
     let tools: ToolController
+    let bridge: EditorBridge
+    var onObjectError: (String) -> Void = { _ in }
     var isToolPickerHidden = false
     var topInset: CGFloat = 0
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
         let controller = NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
         controller.tools = tools
+        controller.onObjectError = onObjectError
+        bridge.controller = controller
         controller.onPencilAction = { [tools, weak controller] action, position in
             if tools.perform(action) { controller?.presentPalette(at: position) }
         }
@@ -43,6 +47,9 @@ struct EditorView: View {
     @State private var insertKind: InsertKind?
     @State private var isExporting = false
     @State private var tools = ToolController()
+    @State private var bridge = EditorBridge()
+    @State private var imageSource: ImageSource?
+    @State private var objectError: String?
     /// Height of the pen toolbar (measured), so the first page starts below it.
     @State private var toolbarHeight: CGFloat = 0
     /// Size of the editor area, so the toolbar can fit its buttons into it.
@@ -79,15 +86,18 @@ struct EditorView: View {
                     .transition(.move(edge: .leading))  // slides in and out instead of popping
                 }
                 NotebookEditor(
-                    notebook: notebook, search: search, navigator: navigator, tools: tools,
+                    notebook: notebook, search: search, navigator: navigator, tools: tools, bridge: bridge,
+                    onObjectError: { objectError = $0 },
                     // The system tool palette floats above full-screen covers (grid, camera).
                     isToolPickerHidden: isShowingGrid || insertKind == .scan,
                     topInset: tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight : 0)
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { editorSize = $0 }
+                    // On this inner view, so its pickers do not fight with the page insertion's.
+                    .objectImageInsertion(source: $imageSource, bridge: bridge) { objectError = $0 }
                     .overlay(alignment: toolbarAlignment) {
                         if !tools.settings.usesSystemToolPicker {
                             PenToolbar(
-                                tools: tools,
+                                tools: tools, onInsertImage: { imageSource = $0 },
                                 availableLength: tools.settings.toolbarPosition == .top ? editorSize.width : editorSize.height)
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toolbarHeight = $0 }
                         }
@@ -117,6 +127,13 @@ struct EditorView: View {
                         let index = notebook.pages.firstIndex(where: { $0.id == current })
                     else { return notebook.pages.count }
                     return index + 1
+                }
+                .alert("Could not insert the image", isPresented: Binding(
+                    get: { objectError != nil }, set: { if !$0 { objectError = nil } })
+                ) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(objectError ?? "")
                 }
                 .alert("Could not change the pages", isPresented: Binding(
                     get: { pageError != nil }, set: { if !$0 { pageError = nil } })

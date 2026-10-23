@@ -89,6 +89,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         }
         // One closure for the whole notebook. It looks up the canvas by page id.
         notebook.onDrawingChange = { [weak self] pageID in self?.modelDrawingChanged(pageID) }
+        notebook.onObjectsChange = { [weak self] pageID in self?.modelObjectsChanged(pageID) }
         notebook.visiblePageIDs = { [weak self] in
             self.map { Set($0.visibleOverlays.keys) } ?? []
         }
@@ -173,7 +174,37 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         // The model may have changed while this page was off screen (undo), so always
         // load from the model, never trust what the canvas still holds.
         show(notebook.drawing(for: overlay.pageID), in: overlay.canvas)
+        showObjects(on: overlay)
         if usesSystemToolPicker { toolPicker.addObserver(overlay.canvas) }
+    }
+
+    // MARK: Objects (M8)
+
+    /// Decoded object images by file name. A 2000-pixel image takes about 16 MB once decoded,
+    /// so only a few stay in memory; the system also empties the cache when memory is low.
+    private let objectImages: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 12
+        return cache
+    }()
+
+    func objectImage(named name: String) -> UIImage? {
+        if let cached = objectImages.object(forKey: name as NSString) { return cached }
+        guard let image = UIImage(contentsOfFile: notebook.package.objectFileURL(named: name).path)?
+            .preparingForDisplay()  // decode now, not while scrolling
+        else { return nil }
+        objectImages.setObject(image, forKey: name as NSString)
+        return image
+    }
+
+    private func showObjects(on overlay: PageOverlayView) {
+        overlay.showObjects(notebook.objects(on: overlay.pageID)) { [weak self] in self?.objectImage(named: $0) }
+    }
+
+    /// Objects changed in the model (added, moved, undone): show them on the page if it is visible.
+    private func modelObjectsChanged(_ pageID: UUID) {
+        guard let overlay = visibleOverlays[pageID] else { return }
+        showObjects(on: overlay)
     }
 
     // MARK: Tools

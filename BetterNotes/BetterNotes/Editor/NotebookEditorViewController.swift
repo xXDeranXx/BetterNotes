@@ -2,6 +2,7 @@ import PDFKit
 import PencilKit
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// The root view of the editor. It is the long-lived first responder:
 /// - the tool picker is shown for it, so the picker stays while canvases come and go;
@@ -18,6 +19,19 @@ final class UndoRoutingView: UIView {
 
     override var canBecomeFirstResponder: Bool { true }
     override var undoManager: UndoManager? { notebook.undoManager }
+
+    /// Cmd+V with an image on the clipboard puts it on the page (M8). Text and other content
+    /// are left alone. PencilKit's lasso has its own paste for ink, which this does not touch.
+    var onPasteImage: (() -> Void)?
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) { return onPasteImage != nil && UIPasteboard.general.hasImages }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    override func paste(_ sender: Any?) {
+        onPasteImage?()
+    }
 }
 
 /// Shows a notebook's PDF with a canvas over every visible page.
@@ -69,7 +83,9 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func loadView() {
-        view = UndoRoutingView(notebook: notebook)
+        let routing = UndoRoutingView(notebook: notebook)
+        routing.onPasteImage = { [weak self] in self?.pasteImage() }
+        view = routing
     }
 
     override func viewDidLoad() {
@@ -245,6 +261,61 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
         if squeeze.phase == .ended {
             onPencilAction?(UIPencilInteraction.preferredSqueezeAction, squeeze.hoverPose.map { $0.location })
+        }
+    }
+
+    // MARK: Inserting images (M8)
+
+    /// Tells the editor screen that an image could not be inserted.
+    var onObjectError: ((String) -> Void)?
+
+    /// The page in the middle of the visible area (below the toolbar) and that point on it,
+    /// in page coordinates. New images go there.
+    func pageAtScreenCenter() -> (id: UUID, point: CGPoint)? {
+        let visible = pdfView.bounds.inset(by: UIEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0))
+        let center = CGPoint(x: visible.midX, y: visible.midY)
+        guard let page = pdfView.page(for: center, nearest: true), let id = notebook.pageID(for: page) else { return nil }
+        let box = page.bounds(for: .cropBox)
+        let geometry = PageGeometry(size: box.size, boxOrigin: box.origin)
+        return (id, geometry.pagePoint(fromPDF: pdfView.convert(center, to: page)))
+    }
+
+    /// Image bytes from Photos or Files: shrunk in the background, then put on the page on screen.
+    func insertImage(data: Data) {
+        insertPrepared { try ObjectImageImport.prepare(data) }
+    }
+
+    /// The clipboard's image. Reading its bytes keeps a PNG screenshot a PNG; a picture that
+    /// only exists as a `UIImage` is stored as JPEG unless it has transparency.
+    func pasteImage() {
+        let pasteboard = UIPasteboard.general
+        guard pasteboard.hasImages else {
+            onObjectError?("There is no image on the clipboard. Copy an image first, for example a screenshot or a photo.")
+            return
+        }
+        for type in [UTType.png, .jpeg, .heic] {
+            if let data = pasteboard.data(forPasteboardType: type.identifier) {
+                insertImage(data: data)
+                return
+            }
+        }
+        guard let image = pasteboard.image else {
+            onObjectError?("The clipboard's image could not be read.")
+            return
+        }
+        insertPrepared { try ObjectImageImport.prepare(image) }
+    }
+
+    private func insertPrepared(_ prepare: @escaping @Sendable () throws -> ObjectImageImport.Prepared) {
+        Task {
+            do {
+                // Shrinking a 12-megapixel photo takes a moment; not on the main thread.
+                let prepared = try await Task.detached(priority: .userInitiated) { try prepare() }.value
+                guard let target = pageAtScreenCenter() else { return }
+                try notebook.insertImage(prepared, on: target.id, center: target.point)
+            } catch {
+                onObjectError?(error.localizedDescription)
+            }
         }
     }
 

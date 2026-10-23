@@ -19,6 +19,31 @@ final class PageCanvasView: PKCanvasView {
     override var canBecomeFirstResponder: Bool { false }
 }
 
+/// Draws a text box with `TextBoxLayout`, exactly as thumbnails and export draw it.
+final class TextBoxView: UIView {
+    var text: TextObject? {
+        didSet { if text != oldValue { setNeedsDisplay() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+        contentMode = .redraw  // draw again when resized, instead of stretching the old picture
+        isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func draw(_ rect: CGRect) {
+        guard let text else { return }
+        // Pages are white in dark mode too.
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            TextBoxLayout.draw(text, in: bounds)
+        }
+    }
+}
+
 /// A transparent layer that lets every touch through to the views below it.
 final class PassthroughView: UIView {
     override init(frame: CGRect) {
@@ -31,7 +56,7 @@ final class PassthroughView: UIView {
 }
 
 /// What PDFKit puts on top of each visible page (SPEC, decision 3). From bottom to top:
-/// an objects layer (empty until milestone 8), the canvas, and a preview layer (live shapes,
+/// an objects layer (images and text boxes, milestone 8), the canvas, and a preview layer (live shapes,
 /// milestone 7). Later features add content to a layer, not new view structure.
 final class PageOverlayView: UIView {
     let pageID: UUID
@@ -231,6 +256,47 @@ final class PageOverlayView: UIView {
         for layer in [fillPreview, outlinePreview] where layer.contentsScale != screenScale * scale {
             layer.contentsScale = screenScale * scale
         }
+        // Text boxes are drawn by hand too; render them as sharp as the ink.
+        for case let box as TextBoxView in objectsLayer.subviews where box.contentScaleFactor != screenScale * scale {
+            box.contentScaleFactor = screenScale * scale
+        }
+    }
+
+    // MARK: Objects (M8)
+
+    /// One view per object, by object id, in the objects layer below the ink.
+    private(set) var objectViews: [UUID: UIView] = [:]
+
+    /// Shows the page's objects, reusing the views of objects that are still there. Views are
+    /// in the objects' order, so a later object lies on top of an earlier one.
+    func showObjects(_ objects: [PageObject], image: (String) -> UIImage?) {
+        var remaining = objectViews
+        objectViews = [:]
+        for object in objects {
+            let view: UIView
+            switch object.content {
+            case .image(let content):
+                let imageView = remaining[object.id] as? UIImageView ?? UIImageView()
+                if imageView.accessibilityIdentifier != content.file {
+                    imageView.accessibilityIdentifier = content.file
+                    imageView.image = image(content.file)
+                    // A missing file shows as a grey box, as in thumbnails and export.
+                    imageView.backgroundColor = imageView.image == nil ? .systemGray5 : .clear
+                }
+                imageView.contentMode = .scaleToFill
+                view = imageView
+            case .text(let content):
+                let box = remaining[object.id] as? TextBoxView ?? TextBoxView()
+                box.text = content
+                view = box
+            }
+            remaining[object.id] = nil
+            view.frame = object.frame
+            objectsLayer.addSubview(view)  // adding an existing subview moves it to the top
+            objectViews[object.id] = view
+        }
+        for leftover in remaining.values { leftover.removeFromSuperview() }
+        setNeedsLayout()  // new text boxes get their sharpness in layoutSubviews
     }
 
     /// The resolution the shape preview draws at (tests).
