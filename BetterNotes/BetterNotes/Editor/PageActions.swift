@@ -7,6 +7,8 @@ struct PageActions {
     let notebook: Notebook
     let navigator: PageNavigator
     let report: (String) -> Void
+    /// The window, so a target notebook in one of its background tabs can take the pages.
+    var session: WindowSession?
 
     func attempt(_ work: () throws -> Void) {
         do { try work() } catch { report(error.localizedDescription) }
@@ -49,6 +51,9 @@ struct PageActions {
         let count = ids.count
         Task {
             do {
+                // A target in a background tab is released for the transfer and claimed again after.
+                let detached = try await session?.detachTabs(under: target) ?? .none
+                defer { session?.reattach(detached, movedFrom: target, to: target) }
                 try await PageTransfer.transfer(ids, from: notebook, toNotebookAt: target, move: move)
                 completion("\(move ? "Moved" : "Copied") \(count) \(count == 1 ? "page" : "pages") to \"\(name)\".")
             } catch {

@@ -7,6 +7,8 @@ nonisolated enum LibraryError: LocalizedError, Equatable {
     case notAFolder
     case notANotebook
     case notInTrash
+    case openInAnotherWindow
+    case tabNotSaved(String)
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +24,10 @@ nonisolated enum LibraryError: LocalizedError, Equatable {
             "This item is not a notebook."
         case .notInTrash:
             "This item is not in the trash."
+        case .openInAnotherWindow:
+            "This notebook (or a notebook in this folder) is open in another window. Close it there first."
+        case .tabNotSaved(let title):
+            "\"\(title)\" could not be saved, so it was not changed. Open its tab to see why."
         }
     }
 }

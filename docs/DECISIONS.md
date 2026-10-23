@@ -169,6 +169,15 @@ Decided:
     - The own row avoids all of this, the popovers keep the app's normal look, and it gives the toolbar more room: all 17 buttons fit in portrait on the 11-inch iPad.
   - **Test lesson**: tool settings survive launches, so a UI test that taps a pen twice may open and close its popover (the pen was already selected). Select a different tool first, or tap once.
   - 434 unit tests and all UI tests pass.
+- **Tabs, step 4: library actions on background tabs (built 2026-10-23; iPad check pending):**
+  - **Which actions**: rename, move, trash, cover color, bulk move and trash, export, and moving or copying pages into a notebook now work when the notebook is in a **background tab of this window**.
+  - **How it works**:
+    - Before the action, `WindowSession.detachTabs(under:)` takes this window's tabs at or inside the URL (a folder includes every notebook in it): it saves each one, releases its model and frees its claim.
+    - It refuses, and nothing changes, when another window has something there open (`LibraryError.openInAnotherWindow`), when one of them is the shown tab (`isOpen`), or when a tab cannot be saved (`tabNotSaved`, the ink stays in memory).
+    - After the action, `reattach(_:movedFrom:to:)` lets the tabs follow: the URL is rebased by path prefix, the tab claims the new place, and its title is read from `meta.json` (a rename changes it). Trash closes the tabs. A failed action reattaches them at the old place. If another window claimed the notebook in between, the tab closes.
+  - **Export** saves a background tab of this window and then reads the files as before; only another window's notebook is refused.
+  - **`LibraryModel.tabHost`** is the window (set by `LibraryView`). Without it (older tests) anything open is refused, as before.
+  - **Tests**: `LibraryTabsTests` covers rename, folder move, trash, the shown tab, another window, a failed move and a tab that cannot be saved; 442 unit tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

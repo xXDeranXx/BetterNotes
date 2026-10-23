@@ -156,6 +156,7 @@ struct LibraryView: View {
             Text(model.errorMessage ?? "")
         }
         .task {
+            model.tabHost = session  // background tabs follow renames and moves
             await model.reload()
             await model.purgeExpiredTrash()
         }
@@ -547,22 +548,31 @@ struct LibraryView: View {
         return true
     }
 
-    /// Opens the notebook just to read it for the export sheet. Not in a window, so it is not
-    /// claimed in the registry; a notebook that a window has open is refused, because that
-    /// window may hold ink that is not on disk yet.
+    /// Opens the notebook just to read it for the export sheet. Not in a tab, so it is not
+    /// claimed in the registry. A background tab of this window is saved first; a notebook open
+    /// in another window is refused, because that window may hold ink that is not on disk yet.
     private func export(_ notebook: NotebookSummary) {
         if let problem = notebook.problem {
             model.errorMessage = "\"\(notebook.title)\" cannot be exported: \(problem)"
             return
         }
-        guard !OpenNotebookRegistry.shared.isOpen(at: notebook.url) else {
-            model.errorMessage = "\"\(notebook.title)\" is open in a tab. Export it from there, or close its tab first."
-            return
-        }
-        do {
-            exportNotebook = try Notebook.open(NotebookPackage(url: notebook.url))
-        } catch {
-            model.errorMessage = error.localizedDescription
+        Task {
+            // A background tab of this window is saved first; export only reads the files.
+            if let tab = session.tab(for: notebook.url), let open = tab.notebook {
+                await open.saveChanges()
+                guard !open.hasUnsavedChanges else {
+                    model.errorMessage = "\"\(notebook.title)\" could not be saved, so it cannot be exported yet. Open its tab to see why."
+                    return
+                }
+            } else if OpenNotebookRegistry.shared.isOpen(at: notebook.url) {
+                model.errorMessage = "\"\(notebook.title)\" is open in another window. Export it from there."
+                return
+            }
+            do {
+                exportNotebook = try Notebook.open(NotebookPackage(url: notebook.url))
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
         }
     }
 

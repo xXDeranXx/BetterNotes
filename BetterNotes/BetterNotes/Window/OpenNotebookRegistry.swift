@@ -48,6 +48,15 @@ nonisolated final class OpenNotebookRegistry: Sendable {
         }
     }
 
+    /// Every claim at `url` or inside it (a folder), with its owner.
+    func claims(under url: URL) -> [(url: URL, owner: NotebookOwner?)] {
+        let key = Self.key(url)
+        let prefix = key.path.hasSuffix("/") ? key.path : key.path + "/"
+        return openNotebooks.withLock { open in
+            open.filter { $0.key == key || $0.key.path.hasPrefix(prefix) }.map { (url: $0.key, owner: $0.value) }
+        }
+    }
+
     func release(_ url: URL) {
         _ = openNotebooks.withLock { $0.removeValue(forKey: Self.key(url)) }
     }
@@ -60,7 +69,7 @@ nonisolated final class OpenNotebookRegistry: Sendable {
     }
 
     /// The same folder can be reached through different paths (symlinks, `..`).
-    private static func key(_ url: URL) -> URL {
+    static func key(_ url: URL) -> URL {
         url.standardizedFileURL.resolvingSymlinksInPath()
     }
 }

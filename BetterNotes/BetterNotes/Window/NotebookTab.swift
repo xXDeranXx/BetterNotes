@@ -37,6 +37,13 @@ final class NotebookTab: Identifiable {
 
     var isLoaded: Bool { notebook != nil }
 
+    /// The notebook was renamed or moved in the library while this tab was released.
+    func relocate(to newURL: URL) {
+        precondition(notebook == nil, "only a released tab can follow its notebook")
+        url = newURL
+        if let meta = try? NotebookPackage(url: newURL).readMeta() { title = meta.title }
+    }
+
     /// Loads the model again if the tab was released.
     func load() throws -> Notebook {
         if let notebook { return notebook }

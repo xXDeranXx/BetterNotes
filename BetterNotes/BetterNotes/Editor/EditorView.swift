@@ -94,7 +94,7 @@ struct EditorView: View {
     }
 
     private var actions: PageActions {
-        PageActions(notebook: notebook, navigator: navigator) { pageError = $0 }
+        PageActions(notebook: notebook, navigator: navigator, report: { pageError = $0 }, session: session)
     }
 
     var body: some View {

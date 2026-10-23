@@ -190,6 +190,61 @@ final class WindowSession {
         }
     }
 
+    // MARK: Library changes (tabs step 4)
+
+    /// Tabs taken off their notebooks while the library renames, moves or trashes them.
+    struct DetachedTabs {
+        fileprivate(set) var tabs: [NotebookTab] = []
+        static let none = DetachedTabs()
+    }
+
+    /// Prepares a library action on `url` (a notebook or a folder): this window's tabs at or
+    /// inside it are saved, released and their claims freed, so the files can change. Refused
+    /// when another window has something there open, when one of them is the shown tab, or
+    /// when a tab cannot be saved. Afterwards call `reattach`, also when the action failed.
+    func detachTabs(under url: URL) async throws -> DetachedTabs {
+        let claims = registry.claims(under: url)
+        guard !claims.isEmpty else { return .none }
+        guard claims.allSatisfy({ $0.owner?.window == windowID }) else { throw LibraryError.openInAnotherWindow }
+        let ids = Set(claims.compactMap { $0.owner?.tab })
+        let found = tabs.filter { ids.contains($0.id) }
+        for tab in found {
+            guard tab.id != activeTabID else { throw LibraryError.isOpen }
+            await tab.notebook?.saveChanges()
+            guard tab.releaseIfSaved() else { throw LibraryError.tabNotSaved(tab.title) }
+        }
+        // The shown tab may have changed during the saves.
+        guard !found.contains(where: { $0.id == activeTabID }) else { throw LibraryError.isOpen }
+        for tab in found { registry.release(tab.url) }
+        return DetachedTabs(tabs: found)
+    }
+
+    /// After a library action: the tabs follow their notebooks from `old` to `new` (a rename or
+    /// a move; for a folder, every notebook inside moves with it), or close when `new` is nil
+    /// (trashed). A tab whose notebook another window claimed meanwhile is closed.
+    func reattach(_ detached: DetachedTabs, movedFrom old: URL, to new: URL?) {
+        for tab in detached.tabs {
+            guard let new else {
+                tabs.removeAll { $0 === tab }
+                continue
+            }
+            let url = Self.rebase(tab.url, from: old, to: new)
+            if registry.claim(url, by: NotebookOwner(window: windowID, tab: tab.id)) {
+                tab.relocate(to: url)
+            } else {
+                tabs.removeAll { $0 === tab }
+            }
+        }
+    }
+
+    /// `url` after its folder (or itself) moved from `old` to `new`.
+    static func rebase(_ url: URL, from old: URL, to new: URL) -> URL {
+        let path = OpenNotebookRegistry.key(url).path, oldPath = OpenNotebookRegistry.key(old).path
+        if path == oldPath { return new }
+        guard path.hasPrefix(oldPath + "/") else { return url }
+        return new.appending(path: String(path.dropFirst(oldPath.count + 1)))
+    }
+
     // MARK: Opening and going home with an animation
 
     /// While a notebook fades in over the library (see `openAnimated`).

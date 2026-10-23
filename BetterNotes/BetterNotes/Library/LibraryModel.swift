@@ -16,6 +16,9 @@ final class LibraryModel {
     @ObservationIgnored let location: LibraryLocation
     @ObservationIgnored let operations: LibraryOperations
     @ObservationIgnored let indexStore: LibraryIndexStore
+    /// This window's tabs: notebooks in background tabs follow a rename or move, and close
+    /// when trashed (tabs step 4). Without it (tests), anything open is refused.
+    @ObservationIgnored weak var tabHost: WindowSession?
 
     var section: LibrarySection = .documents
     /// The folder shown in `.documents`; always inside the library root.
@@ -177,19 +180,15 @@ final class LibraryModel {
 
     func setLayout(_ layout: LibraryLayout) { updateIndex { $0.layout = layout } }
 
-    /// Runs `work` for each item in the background. Items that fail (for example a notebook
-    /// that is open in a window) are listed in one message; the others still go through.
-    private func performEach(_ urls: [URL], _ work: @escaping @Sendable (URL) throws -> Void) async {
-        let failures = await Task.detached { () -> [String] in
-            var failed: [String] = []
-            for url in urls {
-                do { try work(url) } catch {
-                    let name = url.deletingPathExtension().lastPathComponent
-                    failed.append("\(name): \(error.localizedDescription)")
-                }
+    /// Runs `work` for each item, one after another. Items that fail (for example a notebook
+    /// that is open in another window) are listed in one message; the others still go through.
+    private func performEach(_ urls: [URL], trashes: Bool = false, _ work: @escaping @Sendable (URL) throws -> URL) async {
+        var failures: [String] = []
+        for url in urls {
+            if let error = await changeFiles(at: url, trashes: trashes, { try work(url) }) {
+                failures.append("\(url.deletingPathExtension().lastPathComponent): \(error.localizedDescription)")
             }
-            return failed
-        }.value
+        }
         if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
         endSelecting()
         await reload()
@@ -197,12 +196,38 @@ final class LibraryModel {
 
     func moveSelection(into destination: URL) async {
         let operations = operations
-        await performEach(Array(selection)) { _ = try operations.move($0, into: destination) }
+        await performEach(Array(selection)) { try operations.move($0, into: destination) }
     }
 
     func trashSelection() async {
         let operations = operations
-        await performEach(Array(selection)) { _ = try operations.trash($0) }
+        await performEach(Array(selection), trashes: true) { _ = try operations.trash($0); return $0 }
+    }
+
+    /// File work on something that may be in a background tab of this window: the tabs are
+    /// taken off the notebook first, then follow it to the place `work` returns (or close when
+    /// it was trashed, or stay where they were when `work` failed). Returns the error, if any.
+    private func changeFiles(at url: URL, trashes: Bool = false, _ work: @escaping @Sendable () throws -> URL) async -> Error? {
+        let detached: WindowSession.DetachedTabs
+        do {
+            detached = try await tabHost?.detachTabs(under: url) ?? .none
+        } catch {
+            return error
+        }
+        do {
+            let newURL = try await Task.detached { try work() }.value
+            tabHost?.reattach(detached, movedFrom: url, to: trashes ? nil : newURL)
+            return nil
+        } catch {
+            tabHost?.reattach(detached, movedFrom: url, to: url)
+            return error
+        }
+    }
+
+    /// `changeFiles` for one item, then rescans; a failure becomes `errorMessage`.
+    private func performChange(at url: URL, trashes: Bool = false, _ work: @escaping @Sendable () throws -> URL) async {
+        if let error = await changeFiles(at: url, trashes: trashes, work) { errorMessage = error.localizedDescription }
+        await reload()
     }
 
     // MARK: Actions
@@ -253,12 +278,12 @@ final class LibraryModel {
 
     func rename(_ url: URL, to name: String) async {
         let operations = operations
-        await perform { try operations.rename(url, to: name) }
+        await performChange(at: url) { try operations.rename(url, to: name) }
     }
 
     func move(_ url: URL, into destination: URL) async {
         let operations = operations
-        await perform { try operations.move(url, into: destination) }
+        await performChange(at: url) { try operations.move(url, into: destination) }
     }
 
     func duplicate(_ url: URL) async {
@@ -281,12 +306,12 @@ final class LibraryModel {
 
     func setCoverColor(_ color: String, for url: URL) async {
         let operations = operations
-        await perform { try operations.setCoverColor(color, for: url) }
+        await performChange(at: url) { try operations.setCoverColor(color, for: url); return url }
     }
 
     func trash(_ url: URL) async {
         let operations = operations
-        await perform { try operations.trash(url) }
+        await performChange(at: url, trashes: true) { _ = try operations.trash(url); return url }
     }
 
     func putBack(_ item: TrashedItem) async {
