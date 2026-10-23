@@ -28,14 +28,14 @@ A personal handwriting notes app for the iPad with the Apple Pencil Pro, replaci
 
 ## Stack
 - **Swift 6, SwiftUI** app lifecycle; UIKit views wrapped with `UIViewRepresentable` where needed (`PDFView`, `PKCanvasView`)
-- **PDFKit**: `PDFView` shows every notebook; `PDFPageOverlayViewProvider` puts one `PKCanvasView` over each visible page
+- **PDFKit**: `PDFView` shows every notebook; `PDFPageOverlayViewProvider` puts one `PKCanvasView` over each visible page. A whiteboard has no `PDFView`: its one overlay fills the editor and its canvas is the scroll view (board mode)
 - **PencilKit**: ink, eraser, lasso, `PKToolPicker`
 - **Swift Testing** (or XCTest) for unit tests
 - Minimum iPadOS 27.0; Swift 6 with main-actor isolation by default; English only
 - Xcode on the developer's Mac, git, GitHub
 
 ## Core idea: every notebook is a PDF
-There is only one kind of document. A blank notebook is a PDF the app generates from page templates; an imported PDF is used as it is. Adding a page means inserting a page into the PDF. Ink is **never** written into the PDF while working; it is stored next to it and only merged on export. This keeps the original file untouched and all ink editable.
+There is only one kind of document. A blank notebook is a PDF the app generates from page templates; an imported PDF is used as it is. Adding a page means inserting a page into the PDF. Ink is **never** written into the PDF while working; it is stored next to it and only merged on export. This keeps the original file untouched and all ink editable. A **whiteboard** is the same kind of package with one blank 10000 x 10000 pt page (`kind: whiteboard`); its background pattern is drawn by the screen and the renderer, never into the PDF.
 
 ## File format
 A notebook is a folder with the extension `.inkbook`, declared as an exported type that conforms to `com.apple.package`, so it looks like one file in the Files app.
@@ -146,11 +146,16 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 - Dark mode for the interface; pages stay white.
 - Empty states, loading states, and error messages that say what happened and what to do; nothing is sent anywhere.
 
+### 8. Added after version 1 (all built and confirmed on the iPad)
+- **Tabs like Goodnotes** (`docs/DECISIONS.md`, "Tabs"): several notebooks as tabs in one window; only the active tab has a `PDFView` and canvases; the 5 most recent tabs keep their model and undo, older ones are released to URL, title, scroll and zoom; Home shows the library and the tabs stay; × to close, drag to reorder, Close Other Tabs, Rename…; tabs come back after a relaunch (`TabStore`).
+- **Outline** (M9): a Pages | Outline switch in the sidebar. Imported PDFs get their bookmarks, or titles guessed from the largest text on each page; own entries can be nested; written into exports as PDF bookmarks.
+- **Windows** (M9): opening a notebook that is open in another window brings that window forward; "Open in" from Files opens library notebooks; a page dragged from another window's sidebar or grid is copied.
+- **Look** (M9): Goodnotes-style polish (rounded thumbnails with a ring and number badge, grey grid, neutral bar icons, backup card, folder item counts).
+- **Whiteboard**: "New Whiteboard" in the library (title, background plain/dots/grid, cover color); one 10000 x 10000 pt board, zoom 0.5 to 5; everything from notebooks (pens, shapes, snapping, images, text boxes, undo with 30 steps, tabs); export as one PDF page around the content.
+- **Scan documents** (VisionKit): into a new notebook or as pages; about 200 dpi JPEG at quality 0.7, embedded unchanged.
+- **Debug overlay** (temporary): CPU, memory, FPS, thermal state, canvases, `k`, loaded drawings, CSV recording; "Show debug overlay" in the toolbar settings. To remove it, delete `Debug/`, `DebugOverlayTests`, `.debugOverlay()` in `RootView` and the "Debug" section in `ToolbarSettingsView`.
+
 ## Later, one at a time
-- **Tabs like Goodnotes** (designed 2026-10-23, full design in `docs/DECISIONS.md`, "Tabs, design"): several notebooks as tabs in one window. Only the active tab has a `PDFView`, canvases and render work; never keep several `PDFView`s alive. No tab limit; the 3 most recent tabs keep their `Notebook` model and undo, older ones are released to URL, title, scroll and zoom (number measured with the debug overlay). A Home button shows the library and the tabs stay; opening from the library makes a new tab. The strip shows whenever a tab is open (× to close, drag to reorder, Close Other Tabs), and tabs are restored on launch (`@SceneStorage`). Library actions on a background tab are allowed (the tab is released and follows the new place). `WindowSession` holds tabs; `OpenNotebookRegistry` records window and tab, and a tab counts as open while it exists. Built 2026-10-23 (see `docs/DECISIONS.md`, "Tabs, steps").
-- **Whiteboard** (built 2026-10-23, see `docs/DECISIONS.md`, "Whiteboard"): a notebook with one 10000 x 10000 pt page and `kind: whiteboard` (format version 5); the canvas is its own scroll view (zoom 0.5 to 5, measured in the spike), background plain, dots or grid, ink, shapes, snapping, images and text boxes, export as one PDF page around the content. Confirmed on the iPad (2026-10-24).
-- **Scan documents** (wish, 2026-10-23): a "Scan Document" action in the library's "+" menu and in the page insert menu. Uses VisionKit's `VNDocumentCameraViewController` (Apple, free, needs a camera usage text `NSCameraUsageDescription` in `BetterNotes/Info.plist`; VisionKit is not on the framework list under "Constraints", so this entry is the discussion). Each scanned page is an image, so it reuses "image as a page" from M4 (a new notebook from the scan, or pages inserted after the current page). **Compression** (decided 2026-10-23): a camera scan is a photo of about 12 megapixels, and every page operation rewrites the whole `document.pdf` (see M4, save time on image-heavy PDFs, not yet measured), so scans are made small on purpose: shrink to about 200 dpi (1654 px wide for A4; the existing `makeImagePage` allows about 290 dpi), compress as JPEG at quality about 0.7, and make sure the PDF really embeds the JPEG (UIKit's PDF renderer does not guarantee it; a test checks the size of a scanned page). A first probe with a synthetic image gave 848 KB per page but was too compressible to be representative; measure a real scan on the iPad and then decide whether a quality setting (high, normal, small) is needed. Text recognition is out of scope (see "Out of scope"). The simulator has no camera, so it can only be checked on the iPad. Small; fits right after M6.
-- **Debug overlay** (built 2026-10-23, to be deleted later; see `docs/DECISIONS.md`, "Debug overlay"): a panel on every screen with CPU, memory, FPS, thermal state, canvases, `k` and loaded drawings, plus CSV recording. It is switched on with "Show debug overlay" in the toolbar settings. To remove it, delete `Debug/`, `DebugOverlayTests`, `.debugOverlay()` in `RootView` and the "Debug" section in `ToolbarSettingsView`. GPU use cannot be shown (no public API).
 - **Known small bugs, not urgent** (developer, 2026-10-23: "I can live with it"):
   - **Undo flickers a little** on pages with translucent ink (filled shapes, highlighter). Undo and redo still swap in a fresh canvas (see "Undo bug" and "Undo flicker fixed"), and PencilKit reports "rendered" a moment before the ink is really on screen. Ideas: a longer grace period while the new canvas waits at opacity 0.01 (cheap now, because a stroke that starts finishes the swap at once), or find a way to reset PencilKit's own copy of the strokes so undo needs no swap at all (the swap-free path already works for adding shapes).
   - **Triangles on rotated pages** point sideways on screen (see `docs/DECISIONS.md`, "M7a, shape tool").
@@ -160,7 +165,6 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 - **Links** between pages and notebooks.
 - Horizontal page-by-page scrolling as an option.
 - More templates (Cornell notes, music staves) and custom templates from a PDF.
-- (A custom pen toolbar is now Milestone 7a.)
 - Presentation mode with a laser pointer.
 
 ## Out of scope
@@ -183,13 +187,13 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 - Prefix commands with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Run `xcodebuild build` before UI tests (`-only-testing` may run an old app). Always `-parallel-testing-enabled NO`.
 - Test rhythm, with `scripts/test.sh`: `fast <Suite>` while building; `unit` (about 20 s) before each commit; `ui` (2 tests, about 3.5 min) only once before an iPad handover, never in loops; the iPad checklist for heat, latency and feel. UI tests pass `-skipTabRestore YES`; a new UI check becomes a part of `InkUITests` or `ObjectsUITests`, not a new test (one app launch each).
 - Swift 6, main-actor isolation by default; file and model code that runs off the main thread is `nonisolated`. `Info.plist` lives next to the `.xcodeproj`, outside the synchronized source folder.
-- Unit tests with a canvas that is not on screen cannot show PencilKit's behaviour. Changes to canvas setup or syncing need the end-to-end UI tests (`InkUITests`: undo, shapes, tabs; `ObjectsUITests`) and a "draw, force-quit, reopen" check.
+- Unit tests with a canvas that is not on screen cannot show PencilKit's behaviour. Changes to canvas setup or syncing need the end-to-end UI tests (`InkUITests`: undo, shapes, whiteboard, tabs; `ObjectsUITests`) and a "draw, force-quit, reopen" check. Commit only when the output shows `** TEST SUCCEEDED **` (a `grep ... && git commit` chain commits failed runs).
 - UI tests (`InkUITests`: undo, shapes, whiteboard, tabs): the simulator must not have a hardware keyboard connected (I/O > Keyboard), else the on-screen keys the tests tap do not exist; tapping an already selected tool opens its options (tool settings survive launches); `typeText` cannot reach a text view inside PDFView's page (tap `app.keys`); the simulator shares its clipboard with the test.
 
 **Pages, coordinates, rendering**
 - One conversion place, `PageGeometry`. Page coordinates (ink, objects, shapes): points, top-left origin, y down, the **unrotated** page. PDFKit gives each overlay the page's size in points at every zoom and enlarges it from outside; for a page with `/Rotate` it gives the unrotated size and turns the overlay. `PDFPage.bounds(for:)` is before `/Rotate`; `PageMeta.size` is the displayed size.
 - A page is identified by its `PDFPage` object (`Notebook.pageID(for:)`), **never by its index** (PDFKit asks for overlays in the middle of `insert`). Tests that show pages in a `PDFView` give it `notebook.document`.
-- `PageRenderer` is the one renderer (thumbnails, covers, export): white page, PDF vector content, rotation applied once, objects, then ink, always in the light appearance. Export is method (b), ink at 4 px per point. JPEGs (scans, images) go in through `CGImage(jpegDataProviderSource:)` and are embedded unchanged.
+- `PageRenderer` is the one renderer (thumbnails, covers, export): white page, PDF vector content, rotation applied once, objects, then ink, always in the light appearance; boards by region (`drawBoard`). Export is method (b), ink at 4 px per point. JPEGs (scans, images) go in through `CGImage(jpegDataProviderSource:)` and are embedded unchanged.
 
 **PencilKit canvas**
 - `overrideUserInterfaceStyle = .light` on canvases (else black ink shows white in dark mode).
@@ -197,7 +201,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 - **Never assign `canvas.drawing` to change ink the user drew on** (undo, redo): PencilKit keeps its old strokes and brings undone ones back. `PageOverlayView.replaceCanvas()` swaps in a fresh canvas; the old one stays on top until the new one has rendered plus 0.1 s (max 0.6 s), the new one waits at opacity 0.01. Only adding ink (a shape) may assign to the existing canvas. Starting a stroke finishes a pending swap.
 - `EditorCoordinator.apply(settings:)` changes nothing when the tool settings did not change (SwiftUI calls it after every stroke and undo).
 - Pen ink: a stroke point of size `s` draws `2 x (s - 2)` wide; pen, ballpoint and fountain pen draw nothing at size 2 or less (`InkTemplate.minimumPenSize` 2.5). Built shapes repeat each corner three times (straight edges); fills are rings following the outline. Snapped shapes copy the look of the last stroke with the same pen (`InkTemplate`).
-- With the select and text tools the canvas takes **no touches** (`isUserInteractionEnabled = false`); the page's own gestures are hand-written (`ObjectDragGesture`, `PageTapGesture`, `ShapeDragGesture`, `HoldToSnapGesture`). A hold is judged in window points (0.5 s within 4 pt), checked by a timer.
+- With the select and text tools a notebook page's canvas takes **no touches** (`isUserInteractionEnabled = false`; on a whiteboard it keeps them, see "Whiteboards"); the page's own gestures are hand-written (`ObjectDragGesture`, `PageTapGesture`, `ShapeDragGesture`, `HoldToSnapGesture`). A hold is judged in window points (0.5 s within 4 pt), checked by a timer.
 
 **Saving and data safety**
 - Autosave about 2 s after a change, when a canvas leaves the screen, on going to the background and on close; per-page revision counters so a change during a save stays unsaved; a failed save shows Retry and blocks closing. An unreadable drawing is kept as `<id>.drawing.unreadable`.
@@ -233,7 +237,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 ## Milestones
 Each milestone ends with: the app running on the developer's iPad, tests passing, and a git commit. The plans of finished milestones and everything found while building them are in `docs/DECISIONS.md`.
 
-**Done and confirmed on the iPad (2026-10-22/23):**
+**Done and confirmed on the iPad (2026-10-22 to 2026-10-24):**
 - **M0** setup, **M1** skeleton (iPad only, Files app, `.inkbook` type, multiple windows).
 - **M2** writing in a notebook: file format, model with undo, PDFView with canvases, renderer, autosave.
 - **M3** PDF import (Files, "Open in", drag and drop), search, lazy loading.
@@ -244,13 +248,9 @@ Each milestone ends with: the app running on the developer's iPad, tests passing
 - **M7a** own pen toolbar (pens, colors, presets, eraser, lasso, ruler, shapes with dash and fill, tap gestures, squeeze palette).
 - **M7** hold to snap shapes; **M7b** hold to smooth curves.
 - **M8** images and text boxes (Photos, Files, Paste, hold-to-paste, select, move, resize, arrange, fonts, bold and italic).
-- **Whiteboard** (one 10000 pt board, backgrounds, everything from notebooks, export around the content).
-- **Tabs** (strip, restore on launch, rename, background tabs) and **M9** (outline tab, Goodnotes-style polish, bring the window forward, pages dragged between windows).
+- **Debug overlay**, **Tabs** (strip, restore on launch, rename, background tabs).
+- **M9** daily-use polish: outline tab, Goodnotes-style look, bring the window forward, pages dragged between windows, narrow windows, dark mode and both orientations.
+- **Whiteboard** (spike measured first; one 10000 pt board, backgrounds, everything from notebooks, export around the content).
 
-### Order of work (updated 2026-10-23)
-Tabs and **M9** done and confirmed on the iPad (2026-10-23). **Whiteboard** done and confirmed on the iPad (2026-10-24). Meanwhile a week of lectures instead of Goodnotes drives the "Later" list.
-
-### Milestone 9: Daily-use polish (done 2026-10-23, see `docs/DECISIONS.md`, "M9")
-Added: an outline tab in the sidebar (PDF bookmarks or guessed titles, own nested entries, exported as bookmarks) and a Goodnotes-style polish of the interface.
-Build: polish for multiple windows and Split View (enabled since milestone 1): opening a notebook that is already open brings its window forward, drag and drop between windows; dark mode, empty and error states, layout checks in both orientations.
-Check yourself: use the app for one week of lectures instead of Goodnotes and note what bothers you; that list drives the "Later" features.
+### Where things stand (2026-10-24)
+Everything planned is built and confirmed on the iPad: 500 unit tests and 2 UI tests (`scripts/test.sh`). Format version 5. **Next:** use the app for a week of lectures instead of Goodnotes and note what bothers you; that list picks the next item from "Later" (the known small bugs, a zoom window, audio, links, horizontal scrolling, templates, presentation mode) and whether the debug overlay can go.
