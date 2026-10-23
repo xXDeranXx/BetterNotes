@@ -199,6 +199,38 @@ final class LibraryModel {
         await performEach(Array(selection)) { try operations.move($0, into: destination) }
     }
 
+    /// The items a drag carries: the dragged item alone, or, when it is one of the ticked items
+    /// while selecting, every ticked item (one drag moves the whole selection).
+    func draggedItems(_ payloads: [String]) -> [URL] {
+        let urls = payloads.compactMap(dragged)
+        guard isSelecting, urls.contains(where: { url in selection.contains { Self.samePlace($0, url) } }) else { return urls }
+        return Array(selection)
+    }
+
+    /// How many items a drag of `url` carries (for the badge on the drag preview).
+    func dragCount(for url: URL) -> Int {
+        isSelecting && selection.contains(url) ? selection.count : 1
+    }
+
+    /// Dropped onto a folder (or a breadcrumb): moves what the drag carries. A folder dropped
+    /// onto itself is left out.
+    func moveDragged(_ payloads: [String], into destination: URL) async -> Bool {
+        let items = draggedItems(payloads).filter { !Self.samePlace($0, destination) }
+        guard !items.isEmpty else { return false }
+        let operations = operations
+        await performEach(items) { try operations.move($0, into: destination) }
+        return true
+    }
+
+    /// Dropped onto the Trash: moves what the drag carries to the trash.
+    func trashDragged(_ payloads: [String]) async -> Bool {
+        let items = draggedItems(payloads)
+        guard !items.isEmpty else { return false }
+        let operations = operations
+        await performEach(items, trashes: true) { _ = try operations.trash($0); return $0 }
+        return true
+    }
+
     func trashSelection() async {
         let operations = operations
         await performEach(Array(selection), trashes: true) { _ = try operations.trash($0); return $0 }

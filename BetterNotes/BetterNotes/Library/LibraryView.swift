@@ -207,9 +207,8 @@ struct LibraryView: View {
                     .listRowBackground(isTrashDropTargeted ? Color.accentColor.opacity(0.25) : nil)
                     // Dropping a notebook or folder here moves it to the trash (recoverable).
                     .dropDestination(for: String.self) { payloads, _ in
-                        let items = payloads.compactMap(model.dragged)
-                        guard !items.isEmpty else { return false }
-                        Task { for item in items { await model.trash(item) } }
+                        guard !model.draggedItems(payloads).isEmpty else { return false }
+                        Task { _ = await model.trashDragged(payloads) }
                         return true
                     } isTargeted: { isTrashDropTargeted = $0 }
             }
@@ -356,7 +355,7 @@ struct LibraryView: View {
             Button("Move to Trash", role: .destructive) { Task { await model.trash(folder.url) } }
         } message: { Text("You can put it back from the Trash for 30 days.") }
         .contextMenu { folderMenu(folder) }
-        .draggable(model.dragPayload(for: folder.url))
+        .draggable(model.dragPayload(for: folder.url)) { dragPreview(for: folder.url, label: label) }
         .dropDestination(for: String.self) { payloads, _ in
             drop(payloads, onto: folder.url)
         } isTargeted: { targeted in
@@ -375,7 +374,7 @@ struct LibraryView: View {
             Button("Move to Trash", role: .destructive) { Task { await model.trash(notebook.url) } }
         } message: { Text("You can put it back from the Trash for 30 days.") }
         .contextMenu { notebookMenu(notebook) }
-        .draggable(model.dragPayload(for: notebook.url))
+        .draggable(model.dragPayload(for: notebook.url)) { dragPreview(for: notebook.url, label: label) }
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -560,13 +559,27 @@ struct LibraryView: View {
 
     // MARK: Actions
 
+    /// Moves what the drag carries (one item, or every ticked item while selecting).
     private func drop(_ payloads: [String], onto destination: URL) -> Bool {
-        let items = payloads.compactMap(model.dragged)
-        guard !items.isEmpty else { return false }
-        Task {
-            for item in items { await model.move(item, into: destination) }
-        }
+        guard model.draggedItems(payloads).contains(where: { !LibraryModel.samePlace($0, destination) }) else { return false }
+        Task { _ = await model.moveDragged(payloads, into: destination) }
         return true
+    }
+
+    /// The drag preview: the item, with the number of items when it carries the selection.
+    private func dragPreview<Label: View>(for url: URL, @ViewBuilder label: () -> Label) -> some View {
+        let count = model.dragCount(for: url)
+        return label()
+            .frame(width: 160)
+            .overlay(alignment: .topTrailing) {
+                if count > 1 {
+                    Text("\(count)")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.accentColor, in: Capsule())
+                }
+            }
     }
 
     /// Opens the notebook just to read it for the export sheet. Not in a tab, so it is not

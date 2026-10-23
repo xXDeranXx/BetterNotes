@@ -97,6 +97,42 @@ struct LibraryModelTests {
         #expect(model.errorMessage == nil)
     }
 
+    @Test func draggingATickedItemMovesTheWholeSelectionButNotTheTargetIntoItself() async throws {
+        let (model, temp) = try makeModel()
+        let a = try makeNotebook(in: temp.url, title: "A")
+        let b = try makeNotebook(in: temp.url, title: "B")
+        let c = try makeNotebook(in: temp.url, title: "C")
+        let folder = try model.operations.createFolder(named: "Uni", in: temp.url)
+        await model.reload()
+
+        model.startSelecting()
+        model.toggleSelection(a.url)
+        model.toggleSelection(b.url)
+        model.toggleSelection(folder)  // ticked too, and the drop target
+        #expect(model.dragCount(for: a.url) == 3)
+        #expect(model.dragCount(for: c.url) == 1)
+        #expect(await model.moveDragged([model.dragPayload(for: a.url)], into: folder))
+
+        #expect(!model.isSelecting)
+        #expect(LibraryScanner.contents(of: folder).notebooks.map(\.title).sorted() == ["A", "B"])
+        #expect(model.contents.notebooks.map(\.title) == ["C"])
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test func draggingAnItemThatIsNotTickedMovesOnlyIt() async throws {
+        let (model, temp) = try makeModel()
+        let a = try makeNotebook(in: temp.url, title: "A")
+        let b = try makeNotebook(in: temp.url, title: "B")
+        await model.reload()
+        model.startSelecting()
+        model.toggleSelection(a.url)
+        #expect(model.draggedItems([model.dragPayload(for: b.url)]).map(\.lastPathComponent) == [b.url.lastPathComponent])
+
+        #expect(await model.trashDragged([model.dragPayload(for: a.url)]))
+        #expect(!FileManager.default.fileExists(atPath: a.url.path))
+        #expect(FileManager.default.fileExists(atPath: b.url.path))
+    }
+
     @Test func trashingASelectionSkipsAnOpenNotebookAndSaysSo() async throws {
         let temp = try TempFolder()
         let registry = OpenNotebookRegistry()
