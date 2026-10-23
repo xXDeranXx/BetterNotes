@@ -6,9 +6,6 @@ import SwiftUI
 struct PenOptionsView: View {
     @Bindable var tools: ToolController
     let kind: PenKind
-    @State private var hexText = ""
-    @State private var hexIsInvalid = false
-
     private var setting: PenSetting { tools.settings.setting(for: kind) }
 
     var body: some View {
@@ -23,8 +20,6 @@ struct PenOptionsView: View {
         }
         .padding(16)
         .frame(width: 320)
-        .onAppear { hexText = setting.colorHex }
-        .onChange(of: setting.colorHex) { _, hex in hexText = hex }
         .presentationCompactAdaptation(.popover)
     }
 
@@ -56,73 +51,7 @@ struct PenOptionsView: View {
     }
 
     private var colorSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(tools.settings.favoriteColors, id: \.self) { hex in
-                        Button { tools.settings.setColor(hex, for: kind) } label: { swatch(hex) }
-                            .contextMenu {
-                                Button("Remove from Favorites", systemImage: "trash", role: .destructive) {
-                                    tools.settings.removeFavorite(hex)
-                                }
-                            }
-                    }
-                    Button {
-                        tools.settings.addFavorite(setting.colorHex)
-                    } label: {
-                        Image(systemName: "plus.circle").font(.title2)
-                    }
-                    .accessibilityLabel("Add current color to favorites")
-                }
-                .padding(.vertical, 2)
-            }
-            HStack(spacing: 10) {
-                ColorPicker("Color", selection: Binding(
-                    get: { Color(hex: setting.colorHex) },
-                    set: { tools.settings.setColor(HexColor.hex(of: UIColor($0)), for: kind) }),
-                    supportsOpacity: false)
-                    .labelsHidden()
-                TextField("#RRGGBB", text: $hexText)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .font(.body.monospaced())
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.red, lineWidth: hexIsInvalid ? 1.5 : 0))
-                    .onSubmit(applyHex)
-                    .onChange(of: hexText) { _, _ in hexIsInvalid = false }
-                Button("Set", action: applyHex)
-            }
-        }
-    }
-
-    private func swatch(_ hex: String) -> some View {
-        Circle()
-            .fill(Color(hex: hex))
-            .frame(width: 30, height: 30)
-            .overlay(Circle().strokeBorder(.primary.opacity(0.25), lineWidth: 1))
-            .overlay {
-                if hex == setting.colorHex {
-                    Image(systemName: "checkmark").font(.caption.bold())
-                        .foregroundStyle(HexColor.color(hex).map(isDark) == true ? .white : .black)
-                }
-            }
-    }
-
-    private func isDark(_ color: UIColor) -> Bool {
-        var white: CGFloat = 0
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        color.getRed(&r, green: &g, blue: &b, alpha: &a)
-        white = 0.299 * r + 0.587 * g + 0.114 * b
-        return white < 0.5
-    }
-
-    private func applyHex() {
-        if let hex = HexColor.normalized(hexText) {
-            tools.settings.setColor(hex, for: kind)
-            hexText = hex
-        } else {
-            hexIsInvalid = true
-        }
+        ColorChooser(tools: tools, hex: Binding(get: { setting.colorHex }, set: { tools.settings.setColor($0, for: kind) }))
     }
 
     private var presetSection: some View {
@@ -244,5 +173,85 @@ struct ToolbarSettingsView: View {
         }
         .frame(width: 360, height: 560)
         .presentationCompactAdaptation(.popover)
+    }
+}
+
+/// Favorite colors, the system color picker and a hex field, for a pen or the shape tool.
+struct ColorChooser: View {
+    @Bindable var tools: ToolController
+    @Binding var hex: String
+    @State private var hexText = ""
+    @State private var hexIsInvalid = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(tools.settings.favoriteColors, id: \.self) { color in
+                        Button { hex = color } label: { swatch(color) }
+                            .contextMenu {
+                                Button("Remove from Favorites", systemImage: "trash", role: .destructive) {
+                                    tools.settings.removeFavorite(color)
+                                }
+                            }
+                    }
+                    Button {
+                        tools.settings.addFavorite(hex)
+                    } label: {
+                        Image(systemName: "plus.circle").font(.title2)
+                    }
+                    .accessibilityLabel("Add current color to favorites")
+                }
+                .padding(.vertical, 2)
+            }
+            HStack(spacing: 10) {
+                ColorPicker("Color", selection: Binding(
+                    get: { Color(hex: hex) },
+                    set: { hex = HexColor.hex(of: UIColor($0)) }),
+                    supportsOpacity: false)
+                    .labelsHidden()
+                TextField("#RRGGBB", text: $hexText)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .font(.body.monospaced())
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.red, lineWidth: hexIsInvalid ? 1.5 : 0))
+                    .onSubmit(applyHex)
+                    .onChange(of: hexText) { _, _ in hexIsInvalid = false }
+                Button("Set", action: applyHex)
+            }
+        }
+        .onAppear { hexText = hex }
+        .onChange(of: hex) { _, newHex in hexText = newHex }
+    }
+
+    private func swatch(_ color: String) -> some View {
+        Circle()
+            .fill(Color(hex: color))
+            .frame(width: 30, height: 30)
+            .overlay(Circle().strokeBorder(.primary.opacity(0.25), lineWidth: 1))
+            .overlay {
+                if color == hex {
+                    Image(systemName: "checkmark").font(.caption.bold())
+                        .foregroundStyle(HexColor.color(color).map(isDark) == true ? .white : .black)
+                }
+            }
+    }
+
+    private func isDark(_ color: UIColor) -> Bool {
+        var white: CGFloat = 0
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        white = 0.299 * r + 0.587 * g + 0.114 * b
+        return white < 0.5
+    }
+
+    private func applyHex() {
+        if let normalized = HexColor.normalized(hexText) {
+            hex = normalized
+            hexText = normalized
+        } else {
+            hexIsInvalid = true
+        }
     }
 }

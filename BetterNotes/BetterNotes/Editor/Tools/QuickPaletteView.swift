@@ -23,6 +23,11 @@ struct QuickPaletteView: View {
                 toolButton("Lasso", symbol: "lasso", isSelected: tools.settings.selected == .lasso) {
                     tools.select(.lasso)
                 }
+                toolButton("Shapes", symbol: tools.settings.shape.kind.symbol,
+                           tint: Color(hex: tools.settings.shape.colorHex),
+                           isSelected: tools.settings.selected == .shape) {
+                    tools.select(.shape)
+                }
                 toolButton("Ruler", symbol: "ruler", isSelected: tools.isRulerActive) {
                     tools.isRulerActive.toggle()
                 }

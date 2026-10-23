@@ -69,6 +69,7 @@ nonisolated enum ToolChoice: Codable, Equatable, Sendable {
     case pen(PenKind)
     case eraser
     case lasso
+    case shape
 }
 
 nonisolated enum ToolbarPosition: String, Codable, CaseIterable, Sendable {
@@ -79,6 +80,34 @@ nonisolated enum ToolbarPosition: String, Codable, CaseIterable, Sendable {
 nonisolated struct PenSetting: Codable, Equatable, Sendable {
     var colorHex: String
     var width: Double
+}
+
+/// The shape tool's own choices: which shape, solid or dashed or dotted, filled or not, and
+/// its own color and width (independent of the pens, like in Goodnotes).
+nonisolated struct ShapeSetting: Codable, Equatable, Sendable {
+    var kind: ShapeKind = .rectangle
+    var lineStyle: LineStyle = .solid
+    var isFilled = false
+    var colorHex = "#000000"
+    var width = 3.0
+
+    /// Shapes are drawn with the pen ink (see `ShapeGeometry.strokes`).
+    static let widthRange: ClosedRange<Double> = PenKind.pen.widthRange
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey { case kind, lineStyle, isFilled, colorHex, width }
+
+    /// Every field is optional, like in `ToolSettings`.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = (try? c.decodeIfPresent(ShapeKind.self, forKey: .kind)) ?? kind
+        lineStyle = (try? c.decodeIfPresent(LineStyle.self, forKey: .lineStyle)) ?? lineStyle
+        isFilled = (try? c.decodeIfPresent(Bool.self, forKey: .isFilled)) ?? isFilled
+        colorHex = (try? c.decodeIfPresent(String.self, forKey: .colorHex)).flatMap(HexColor.normalized) ?? colorHex
+        width = min(max((try? c.decodeIfPresent(Double.self, forKey: .width)) ?? width, Self.widthRange.lowerBound),
+                    Self.widthRange.upperBound)
+    }
 }
 
 /// A saved pen: type + color + width. One tap switches to exactly that pen.
@@ -111,6 +140,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
     var presets: [PenPreset] = []
     var eraserMode: EraserMode = .stroke
     var eraserWidth = 24.0
+    var shape = ShapeSetting()
     var toolbarPosition: ToolbarPosition = .top
     var isToolbarCollapsed = false
     /// Off by default: the Pencil writes, fingers scroll (SPEC).
@@ -125,7 +155,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case version, selected, pens, enabledPens, favoriteColors, presets, eraserMode, eraserWidth
+        case version, selected, pens, enabledPens, favoriteColors, presets, eraserMode, eraserWidth, shape
         case toolbarPosition, isToolbarCollapsed, allowsFingerDrawing, isLeftHanded, twoFingerTapUndoes
         case threeFingerTapRedoes, usesSystemToolPicker
     }
@@ -146,6 +176,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         presets = value(.presets) ?? []
         eraserMode = value(.eraserMode) ?? eraserMode
         eraserWidth = value(.eraserWidth) ?? eraserWidth
+        shape = value(.shape) ?? shape
         toolbarPosition = value(.toolbarPosition) ?? toolbarPosition
         isToolbarCollapsed = value(.isToolbarCollapsed) ?? isToolbarCollapsed
         allowsFingerDrawing = value(.allowsFingerDrawing) ?? allowsFingerDrawing
@@ -166,6 +197,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         try c.encode(presets, forKey: .presets)
         try c.encode(eraserMode, forKey: .eraserMode)
         try c.encode(eraserWidth, forKey: .eraserWidth)
+        try c.encode(shape, forKey: .shape)
         try c.encode(toolbarPosition, forKey: .toolbarPosition)
         try c.encode(isToolbarCollapsed, forKey: .isToolbarCollapsed)
         try c.encode(allowsFingerDrawing, forKey: .allowsFingerDrawing)
@@ -204,7 +236,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         pens[kind] ?? PenSetting(colorHex: kind.defaultColor, width: kind.defaultWidth)
     }
 
-    /// The pen that is selected, or the last one used when the eraser or lasso is selected.
+    /// The pen that is selected, or the first pen on the toolbar when another tool is selected.
     var currentPen: PenKind {
         if case .pen(let kind) = selected { return kind }
         return enabledPens[0]
@@ -221,6 +253,14 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         var setting = self.setting(for: kind)
         setting.width = min(max(width, kind.widthRange.lowerBound), kind.widthRange.upperBound)
         pens[kind] = setting
+    }
+
+    mutating func setShapeColor(_ hex: String) {
+        if let hex = HexColor.normalized(hex) { shape.colorHex = hex }
+    }
+
+    mutating func setShapeWidth(_ width: Double) {
+        shape.width = min(max(width, ShapeSetting.widthRange.lowerBound), ShapeSetting.widthRange.upperBound)
     }
 
     mutating func setEraserWidth(_ width: Double) {
@@ -286,6 +326,10 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
             return eraserMode == .stroke ? PKEraserTool(.vector) : PKEraserTool(.fixedWidthBitmap, width: CGFloat(eraserWidth))
         case .lasso:
             return PKLassoTool()
+        case .shape:
+            // The canvas does not draw while the shape tool is on (the shape gesture does), but
+            // it still needs a tool; this one matches the shape if PencilKit ever shows it.
+            return PKInkingTool(.pen, color: HexColor.color(shape.colorHex) ?? .black, width: CGFloat(shape.width))
         }
     }
 }

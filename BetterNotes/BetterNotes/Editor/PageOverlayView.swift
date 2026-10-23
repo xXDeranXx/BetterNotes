@@ -51,6 +51,7 @@ final class PageOverlayView: UIView {
         for layer in [objectsLayer, previewLayer] {
             layer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         }
+        setUpShapePreview()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -93,6 +94,7 @@ final class PageOverlayView: UIView {
         new.tool = old.tool
         new.isRulerActive = old.isRulerActive
         new.drawingPolicy = old.drawingPolicy
+        new.drawingGestureRecognizer.isEnabled = old.drawingGestureRecognizer.isEnabled  // off while drawing shapes
         old.delegate = nil
         old.isUserInteractionEnabled = false
         insertSubview(new, belowSubview: old)
@@ -115,7 +117,67 @@ final class PageOverlayView: UIView {
     func retireOldCanvas() {
         retiredCanvas?.removeFromSuperview()
         retiredCanvas = nil
+        if clearsPreviewOnRetire { clearShapePreview() }
     }
+
+    // MARK: Shapes
+
+    /// Reads the Pencil's drag while the shape tool is on (see `ShapeDragGesture`).
+    let shapeGesture = ShapeDragGesture()
+    /// Draws the shape in progress on the preview layer. A `CAShapeLayer` is a Core Animation
+    /// layer that draws a vector path (like an SVG `<path>`); changing its path redraws it cheaply.
+    private let fillPreview = CAShapeLayer()
+    private let outlinePreview = CAShapeLayer()
+    private var clearsPreviewOnRetire = false
+
+    private func setUpShapePreview() {
+        for layer in [fillPreview, outlinePreview] {
+            layer.fillColor = nil
+            layer.lineCap = .round
+            layer.lineJoin = .round
+            previewLayer.layer.addSublayer(layer)
+        }
+        shapeGesture.isEnabled = false
+        addGestureRecognizer(shapeGesture)
+    }
+
+    /// Shows `shape` on the preview layer, in the same points the strokes will get.
+    func showShapePreview(_ shape: ShapeOutline?, color: UIColor, width: CGFloat) {
+        clearsPreviewOnRetire = false
+        let outline = UIBezierPath()
+        for piece in shape?.pieces ?? [] { Self.add(piece, to: outline) }
+        outlinePreview.path = outline.cgPath
+        outlinePreview.strokeColor = color.cgColor
+        outlinePreview.lineWidth = width
+        let fill = UIBezierPath()
+        if let points = shape?.fill { Self.add(points, to: fill) }
+        fillPreview.path = fill.cgPath
+        fillPreview.strokeColor = color.withAlphaComponent(ShapeGeometry.fillOpacity).cgColor
+        fillPreview.lineWidth = ShapeGeometry.fillWidth
+    }
+
+    private static func add(_ points: [CGPoint], to path: UIBezierPath) {
+        guard let first = points.first else { return }
+        path.move(to: first)
+        // A single point (a dot) needs a tiny segment, or the round cap is not drawn.
+        if points.count == 1 { path.addLine(to: CGPoint(x: first.x + 0.01, y: first.y)) }
+        for point in points.dropFirst() { path.addLine(to: point) }
+    }
+
+    /// The shape went into the model. The old canvas, which does not have it yet, still covers
+    /// the page for a moment after an ink change (see `replaceCanvas`), so the preview stays
+    /// until that canvas is gone; otherwise the shape would blink.
+    func finishShapePreview() {
+        if retiredCanvas == nil { clearShapePreview() } else { clearsPreviewOnRetire = true }
+    }
+
+    func clearShapePreview() {
+        clearsPreviewOnRetire = false
+        fillPreview.path = nil
+        outlinePreview.path = nil
+    }
+
+    var isShowingShapePreview: Bool { outlinePreview.path.map { !$0.isEmpty } ?? false }
 
     /// How much sharper than the page the canvas renders (1 = the page's own size).
     /// PencilKit draws ink at the resolution of its scroll view's `zoomScale`, and ignores
@@ -137,5 +199,61 @@ final class PageOverlayView: UIView {
         canvas.maximumZoomScale = scale
         if canvas.zoomScale != scale { canvas.zoomScale = scale }
         canvas.transform = CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)
+    }
+}
+
+/// Follows one drag on the page while the shape tool is on.
+///
+/// Gesture recognizers compete for a touch: by default, the first one that recognizes wins and
+/// the others fail. PDFView's scrolling pan only recognizes after the touch has moved a bit, so
+/// this recognizer starts the moment the Pencil touches down and wins; a finger still scrolls,
+/// because only the Pencil is allowed (fingers too when finger drawing is on, and in the
+/// simulator, which has no Pencil).
+final class ShapeDragGesture: UIGestureRecognizer {
+    private(set) var startLocation: CGPoint = .zero
+    private var trackedTouch: UITouch?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        // Only touches of the allowed types arrive here, so a resting palm does not count.
+        guard trackedTouch == nil, touches.count == 1, let touch = touches.first else {
+            // A second allowed touch (a pinch while finger drawing is on): not a shape.
+            if trackedTouch == nil { state = .failed } else { state = .cancelled }
+            return
+        }
+        trackedTouch = touch
+        startLocation = touch.location(in: view)
+        state = .began
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        state = .changed
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        state = .ended
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .cancelled
+    }
+
+    override func reset() {
+        super.reset()
+        trackedTouch = nil
+    }
+
+    /// Where the tracked touch is now, in the page's points.
+    var currentLocation: CGPoint {
+        guard let trackedTouch, let view else { return startLocation }
+        return trackedTouch.location(in: view)
+    }
+
+    /// Pencil only, or Pencil and fingers.
+    func allowFingers(_ allowed: Bool) {
+        var types: [UITouch.TouchType] = [.pencil]
+        if allowed { types.append(.direct) }
+        allowedTouchTypes = types.map { NSNumber(value: $0.rawValue) }
     }
 }

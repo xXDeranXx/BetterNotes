@@ -15,6 +15,10 @@ final class UndoThenWriteUITests: XCTestCase {
         let undo = app.navigationBars.firstMatch.buttons["Undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 10))
         sleep(2)
+        // Tool settings are remembered between launches. Tapping a selected tool opens its options,
+        // so go through the lasso (it has none) to select exactly the pen.
+        app.buttons["Lasso"].firstMatch.tap()
+        app.buttons["Pen"].firstMatch.tap()
 
         let window = app.windows.firstMatch
         func stroke(y: CGFloat) {
@@ -37,6 +41,66 @@ final class UndoThenWriteUITests: XCTestCase {
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.4), "stroke A is missing")
         XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.5), "the undone stroke B came back")
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.6), "stroke C is missing")
+    }
+}
+
+/// End to end: a shape drawn with the shape tool lands on the page (the drag does not scroll),
+/// is one undo step, the canvas does not draw freehand ink after an undo while shapes are on,
+/// and the shape survives the next pen stroke.
+final class ShapeToolUITests: XCTestCase {
+    @MainActor
+    func testAShapeIsDrawnUndoneAndKeptByTheNextStroke() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
+        app.buttons["Add"].tap()
+        app.buttons["New Notebook"].firstMatch.tap()
+        app.buttons["Create"].firstMatch.tap()
+        let undo = app.navigationBars.firstMatch.buttons["Undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 10))
+        sleep(2)
+        let window = app.windows.firstMatch
+        func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
+            window.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        }
+        func shot(_ name: String) throws -> Pixels {
+            let shot = XCUIScreen.main.screenshot()
+            let attachment = XCTAttachment(screenshot: shot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return try XCTUnwrap(Pixels(shot.image))
+        }
+        func dragRectangle() {
+            point(0.45, 0.35).press(forDuration: 0.1, thenDragTo: point(0.75, 0.45))
+            sleep(1)
+        }
+
+        app.buttons["Lasso"].firstMatch.tap()  // tapping a selected tool would open its options
+        app.buttons["Shapes"].firstMatch.tap()  // a rectangle, solid, unless a run changed the shape options
+        dragRectangle()
+        var pixels = try shot("shape")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.35), "top edge missing (did the drag scroll?)")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.45), "bottom edge missing")
+        XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.40), "freehand ink inside the rectangle")
+
+        undo.tap()
+        sleep(1)
+        pixels = try shot("undone")
+        XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.35), "the undone shape is still there")
+
+        dragRectangle()  // on the fresh canvas after the undo
+        pixels = try shot("again")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.35), "second shape missing")
+        XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.40), "the canvas drew freehand after the undo")
+
+        app.buttons["Pen"].firstMatch.tap()
+        point(0.45, 0.6).press(forDuration: 0.1, thenDragTo: point(0.75, 0.6))
+        sleep(2)
+        pixels = try shot("after stroke")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.6), "pen stroke missing")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.35), "the next stroke dropped the shape")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.45), "the next stroke dropped the shape")
     }
 }
 

@@ -8,7 +8,7 @@ struct PenToolbar: View {
     @Bindable var tools: ToolController
     @State private var popover: Popover?
 
-    private enum Popover: Hashable { case pen(PenKind), eraser, settings }
+    private enum Popover: Hashable { case pen(PenKind), eraser, shape, settings }
 
     private var isVertical: Bool { tools.settings.toolbarPosition != .top }
 
@@ -29,7 +29,7 @@ struct PenToolbar: View {
         Button {
             tools.settings.isToolbarCollapsed = false
         } label: {
-            Image(systemName: tools.settings.selected == .eraser ? "eraser" : tools.currentPen.symbol)
+            Image(systemName: collapsedSymbol)
                 .foregroundStyle(currentColor)
                 .frame(width: 44, height: 44)
                 .background(.regularMaterial, in: Circle())
@@ -38,8 +38,21 @@ struct PenToolbar: View {
         .accessibilityLabel("Show tools")
     }
 
+    private var collapsedSymbol: String {
+        switch tools.settings.selected {
+        case .pen(let kind): kind.symbol
+        case .eraser: "eraser"
+        case .lasso: "lasso"
+        case .shape: tools.settings.shape.kind.symbol
+        }
+    }
+
     private var currentColor: Color {
-        tools.settings.selected == .eraser ? .primary : Color(hex: tools.currentPenSetting.colorHex)
+        switch tools.settings.selected {
+        case .pen: Color(hex: tools.currentPenSetting.colorHex)
+        case .shape: Color(hex: tools.settings.shape.colorHex)
+        case .eraser, .lasso: .primary
+        }
     }
 
     private var expanded: some View {
@@ -51,6 +64,11 @@ struct PenToolbar: View {
             divider
             eraserButton
             toolButton(.lasso, symbol: "lasso", label: "Lasso")
+            shapeButton
+            // Text boxes come with milestone 8 (objects on pages).
+            icon("character.textbox", isSelected: false)
+                .opacity(0.35)
+                .accessibilityLabel("Text box (coming later)")
             Button {
                 tools.isRulerActive.toggle()
             } label: {
@@ -117,6 +135,18 @@ struct PenToolbar: View {
         }
         .accessibilityLabel("Eraser")
         .popover(isPresented: binding(for: .eraser)) { EraserOptionsView(tools: tools) }
+    }
+
+    /// Tapping selects the shape tool; tapping it again opens shape, line style, fill, color and width.
+    private var shapeButton: some View {
+        let isSelected = tools.settings.selected == .shape
+        return Button {
+            if isSelected { popover = .shape } else { tools.select(.shape) }
+        } label: {
+            icon(tools.settings.shape.kind.symbol, isSelected: isSelected, tint: Color(hex: tools.settings.shape.colorHex))
+        }
+        .accessibilityLabel("Shapes")
+        .popover(isPresented: binding(for: .shape)) { ShapeOptionsView(tools: tools) }
     }
 
     private func toolButton(_ choice: ToolChoice, symbol: String, label: String) -> some View {

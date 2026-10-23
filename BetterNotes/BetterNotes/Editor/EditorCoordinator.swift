@@ -24,6 +24,8 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private(set) var usesSystemToolPicker = false
     private(set) var isRulerActive = false
     private(set) var allowsFingerDrawing = false
+    /// The shape tool's choices while it is selected, nil for every other tool.
+    private(set) var shape: ShapeSetting?
     private var lastApplication: ToolApplication?
 
     /// What `configure` needs from the settings; selecting a tool or changing its color or
@@ -103,6 +105,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         let overlay = PageOverlayView(pageID: pageID)
         overlay.canvas.delegate = self
         overlay.renderScale = currentRenderScale
+        overlay.shapeGesture.addTarget(self, action: #selector(shapeDragged(_:)))
         return overlay
     }
 
@@ -156,7 +159,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         // stayed invisible after reopening a notebook).
         applyRenderScale(to: overlay)
         overlay.layoutIfNeeded()
-        configure(overlay.canvas)
+        configure(overlay)
         // The model may have changed while this page was off screen (undo), so always
         // load from the model, never trust what the canvas still holds.
         show(notebook.drawing(for: overlay.pageID), in: overlay.canvas)
@@ -180,16 +183,28 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         usesSystemToolPicker = settings.usesSystemToolPicker
         allowsFingerDrawing = settings.allowsFingerDrawing
         self.isRulerActive = isRulerActive
+        shape = settings.selected == .shape && !settings.usesSystemToolPicker ? settings.shape : nil
         for overlay in visibleOverlays.values {
-            configure(overlay.canvas)
+            configure(overlay)
             if switchedPicker {
                 if usesSystemToolPicker { toolPicker.addObserver(overlay.canvas) } else { toolPicker.removeObserver(overlay.canvas) }
             }
         }
     }
 
-    private func configure(_ canvas: PKCanvasView) {
+    private func configure(_ overlay: PageOverlayView) {
+        let canvas = overlay.canvas
         if !usesSystemToolPicker { canvas.tool = tool }
+        // While the shape tool is on, the shape gesture reads the Pencil and PencilKit must not
+        // draw (SPEC, M2 spike: switching its gesture off is clean).
+        let drawsShapes = shape != nil
+        if canvas.drawingGestureRecognizer.isEnabled == drawsShapes { canvas.drawingGestureRecognizer.isEnabled = !drawsShapes }
+        overlay.shapeGesture.isEnabled = drawsShapes
+        #if targetEnvironment(simulator)
+        overlay.shapeGesture.allowFingers(true)
+        #else
+        overlay.shapeGesture.allowFingers(allowsFingerDrawing)
+        #endif
         if canvas.isRulerActive != isRulerActive { canvas.isRulerActive = isRulerActive }
         #if !targetEnvironment(simulator)
         let policy: PKCanvasViewDrawingPolicy = allowsFingerDrawing ? .anyInput : .pencilOnly
@@ -242,6 +257,46 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     }
 
     static let retireGracePeriod: TimeInterval = 0.1
+
+    // MARK: Shapes
+
+    @objc private func shapeDragged(_ gesture: ShapeDragGesture) {
+        guard let overlay = gesture.view as? PageOverlayView else { return }
+        let end = gesture.currentLocation
+        switch gesture.state {
+        case .began, .changed:
+            guard let shape else { return }
+            overlay.showShapePreview(
+                outline(for: shape, from: gesture.startLocation, to: end), color: color(of: shape), width: CGFloat(shape.width))
+        case .ended:
+            if let shape { addShape(shape, from: gesture.startLocation, to: end, on: overlay) } else { overlay.clearShapePreview() }
+        default:
+            overlay.clearShapePreview()
+        }
+    }
+
+    private func outline(for shape: ShapeSetting, from start: CGPoint, to end: CGPoint) -> ShapeOutline? {
+        ShapeGeometry.outline(shape.kind, from: start, to: end, style: shape.lineStyle,
+                              width: CGFloat(shape.width), filled: shape.isFilled)
+    }
+
+    private func color(of shape: ShapeSetting) -> UIColor { HexColor.color(shape.colorHex) ?? .black }
+
+    /// Puts the shape's strokes into the model as one undo step. The canvas then shows them the
+    /// same way as after an undo: the model reports the change and the page gets a fresh canvas
+    /// (`modelDrawingChanged`), so PencilKit's old copy of the strokes cannot drop the shape
+    /// with the next stroke. Never assign `canvas.drawing` here for that reason.
+    /// Points of the drag are the overlay's own coordinates, which are page points (SPEC, M2).
+    func addShape(_ shape: ShapeSetting, from start: CGPoint, to end: CGPoint, on overlay: PageOverlayView) {
+        guard let outline = outline(for: shape, from: start, to: end) else {
+            overlay.clearShapePreview()
+            return
+        }
+        var drawing = notebook.drawing(for: overlay.pageID)
+        drawing.strokes += ShapeGeometry.strokes(for: outline, color: color(of: shape), width: CGFloat(shape.width))
+        notebook.setDrawing(drawing, for: overlay.pageID, actionName: "Shape")
+        overlay.finishShapePreview()
+    }
 
     // MARK: Canvas → model
 
