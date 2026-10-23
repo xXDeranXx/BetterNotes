@@ -165,6 +165,10 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
     /// Font size and color of new text boxes (M8).
     var textFontSize = TextObject.defaultFontSize
     var textColorHex = "#000000"
+    /// Font family, bold and italic of new text boxes (M8 polish).
+    var textFont: TextFont = .system
+    var textBold = false
+    var textItalic = false
 
     static let textFontSizes: [Double] = [10, 12, 14, 16, 20, 24, 32, 40, 56]
 
@@ -174,7 +178,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         case version, selected, pens, enabledPens, favoriteColors, presets, eraserMode, eraserWidth, shape
         case toolbarPosition, isToolbarCollapsed, allowsFingerDrawing, isLeftHanded, twoFingerTapUndoes
         case threeFingerTapRedoes, usesSystemToolPicker, holdToSnapShapes, holdToSmoothCurves
-        case textFontSize, textColorHex
+        case textFontSize, textColorHex, textFont, textBold, textItalic
     }
 
     init(from decoder: Decoder) throws {
@@ -205,6 +209,9 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         holdToSmoothCurves = value(.holdToSmoothCurves) ?? holdToSmoothCurves
         textFontSize = value(.textFontSize) ?? textFontSize
         textColorHex = (value(.textColorHex) as String?).flatMap(HexColor.normalized) ?? textColorHex
+        textFont = (value(.textFont) as String?).flatMap(TextFont.init(rawValue:)) ?? textFont
+        textBold = value(.textBold) ?? textBold
+        textItalic = value(.textItalic) ?? textItalic
         sanitize()
     }
 
@@ -230,6 +237,9 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         try c.encode(holdToSmoothCurves, forKey: .holdToSmoothCurves)
         try c.encode(textFontSize, forKey: .textFontSize)
         try c.encode(textColorHex, forKey: .textColorHex)
+        try c.encode(textFont.rawValue, forKey: .textFont)
+        try c.encode(textBold, forKey: .textBold)
+        try c.encode(textItalic, forKey: .textItalic)
     }
 
     /// Repairs values that make no sense (a bad color, a width out of range, an empty toolbar).

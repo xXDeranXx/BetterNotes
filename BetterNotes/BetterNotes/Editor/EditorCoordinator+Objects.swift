@@ -8,6 +8,47 @@ struct ObjectSelection: Equatable {
     let objectID: UUID
 }
 
+/// Where a finger was held on an empty spot, in page points: Paste puts things there.
+struct PasteTarget: Equatable {
+    let pageID: UUID
+    let point: CGPoint
+}
+
+/// What the editor reads from and writes to the clipboard (M8). A copied text box goes there
+/// as plain text, for other apps, and as its own type, so pasting it here keeps its font,
+/// size, color, bold and italic. Checking what is there (`hasImages`, `hasStrings`, `contains`)
+/// does not count as reading, so iPadOS does not ask the user for it.
+enum PageClipboard {
+    static let textBoxType = "com.betternotes.textbox"
+
+    private struct CopiedTextBox: Codable {
+        var width: Double
+        var object: PageObject
+    }
+
+    static var hasContent: Bool {
+        let board = UIPasteboard.general
+        return board.hasImages || board.hasStrings || board.contains(pasteboardTypes: [textBoxType])
+    }
+
+    static func copy(_ text: TextObject, width: CGFloat) {
+        let copied = CopiedTextBox(
+            width: Double(width), object: PageObject(frame: CGRect(x: 0, y: 0, width: width, height: 0), content: .text(text)))
+        var item: [String: Any] = [UTType.utf8PlainText.identifier: text.text]
+        if let data = try? JSONEncoder().encode(copied) { item[textBoxType] = data }
+        UIPasteboard.general.setItems([item])
+    }
+
+    /// A text box copied in this app, with its width. Only call while pasting (it reads).
+    static func copiedTextBox() -> (text: TextObject, width: CGFloat)? {
+        guard let data = UIPasteboard.general.data(forPasteboardType: textBoxType),
+            let copied = try? JSONDecoder().decode(CopiedTextBox.self, from: data),
+            case .text(let text) = copied.object.content
+        else { return nil }
+        return (text, CGFloat(copied.width))
+    }
+}
+
 /// A move or resize in progress: what was grabbed, and the object as it was at the start.
 struct ObjectDrag {
     let handle: ObjectHandle?
@@ -140,15 +181,39 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
         return ObjectEditing.resized(original, handle: handle, by: translation)
     }
 
-    /// A finger held on an object with another tool: select it (the editor switches to the select tool).
+    /// A finger held on an object with another tool: select it (the editor switches to the select
+    /// tool). Held on an empty spot with any tool: offer Paste there, if the clipboard has
+    /// something a page can take.
     @objc func objectLongPressed(_ gesture: UILongPressGestureRecognizer) {
         guard gesture.state == .began, let overlay = gesture.view as? PageOverlayView else { return }
         let point = gesture.location(in: overlay)
+        if let editing = textEditing, editing.pageID == overlay.pageID, let view = editing.view, view.frame.contains(point) {
+            return  // the text view has its own long press (cursor, selection)
+        }
         let reach = Self.handleReach / max(zoom, 0.01)
-        guard let hit = ObjectEditing.object(at: point, in: notebook.objects(on: overlay.pageID), slop: reach / 4) else { return }
-        onLongPressObject?()
-        select(hit, on: overlay)
-        presentEditMenu(on: overlay)
+        if let hit = ObjectEditing.object(at: point, in: notebook.objects(on: overlay.pageID), slop: reach / 4) {
+            guard !selectsObjects else { return }  // the select tool's drag owns objects
+            endTextEditing()
+            onLongPressObject?()
+            select(hit, on: overlay)
+            presentEditMenu(on: overlay)
+            return
+        }
+        guard PageClipboard.hasContent else { return }
+        endTextEditing()
+        clearSelection(notify: true)
+        pasteTarget = PasteTarget(pageID: overlay.pageID, point: point)
+        overlay.interactions.compactMap { $0 as? UIEditMenuInteraction }.first?.presentEditMenu(
+            with: UIEditMenuConfiguration(identifier: Self.pasteMenuID, sourcePoint: point))
+    }
+
+    /// The menu shown on an empty spot (only Paste), told apart from an object's menu by this id.
+    static let pasteMenuID = "paste" as NSString
+
+    /// The Paste target, once: the next paste uses it, later ones go to the middle of the screen.
+    func takePasteTarget() -> PasteTarget? {
+        defer { pasteTarget = nil }
+        return pasteTarget
     }
 
     // MARK: Edit menu
@@ -169,12 +234,18 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
     }
 
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, targetRectFor configuration: UIEditMenuConfiguration) -> CGRect {
-        selectedObject()?.frame ?? .null
+        if configuration.identifier as? NSString == Self.pasteMenuID {
+            return CGRect(origin: configuration.sourcePoint, size: .zero)
+        }
+        return selectedObject()?.frame ?? .null
     }
 
     func editMenuInteraction(
         _ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]
     ) -> UIMenu? {
+        if configuration.identifier as? NSString == Self.pasteMenuID {
+            return pasteMenu(from: suggestedActions)
+        }
         guard let selection, let object = selectedObject() else { return nil }
         var items: [UIMenuElement] = []
         items += textMenuItems(for: object, selection: selection)
@@ -197,6 +268,32 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
         return UIMenu(children: items)
     }
 
+    /// A Paste menu closed without pasting: a later Cmd+V goes to the middle of the screen again.
+    func editMenuInteraction(
+        _ interaction: UIEditMenuInteraction, willDismissMenuFor configuration: UIEditMenuConfiguration,
+        animator: any UIEditMenuInteractionAnimating
+    ) {
+        guard configuration.identifier as? NSString == Self.pasteMenuID else { return }
+        animator.addCompletion { [weak self] in self?.pasteTarget = nil }
+    }
+
+    /// Only the system's own Paste item. It comes from the responder chain (the editor's root
+    /// view answers `canPerformAction(paste:)`), and because the system made it, iPadOS does not
+    /// ask "Allow Paste?" when it reads the clipboard, the same as with Cmd+V.
+    private func pasteMenu(from suggested: [UIMenuElement]) -> UIMenu? {
+        func findPaste(in elements: [UIMenuElement]) -> UIMenuElement? {
+            for element in elements {
+                if let command = element as? UICommand, command.action == #selector(UIResponderStandardEditActions.paste(_:)) {
+                    return command
+                }
+                if let menu = element as? UIMenu, let found = findPaste(in: menu.children) { return found }
+            }
+            return nil
+        }
+        guard let paste = findPaste(in: suggested) else { return nil }
+        return UIMenu(children: [paste])
+    }
+
     // MARK: Actions
 
     private func copyToClipboard(_ object: PageObject) {
@@ -206,8 +303,31 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
             let type: UTType = image.file.lowercased().hasSuffix(".png") ? .png : .jpeg
             UIPasteboard.general.setData(data, forPasteboardType: type.identifier)
         case .text(let text):
-            UIPasteboard.general.string = text.text
+            PageClipboard.copy(text, width: object.frame.width)
         }
+    }
+
+    // MARK: Pasting text
+
+    /// Puts a text box on the page, centred on `point` and kept on the page (Paste, Cmd+V).
+    /// `width` is the copied box's width; plain text gets the width of its longest line.
+    func pasteText(_ text: TextObject, width: CGFloat?, on pageID: UUID, at point: CGPoint, pageSize: CGSize) {
+        let width = min(width ?? TextBoxLayout.pastedWidth(of: text, pageWidth: pageSize.width), max(TextBoxLayout.minimumWidth, pageSize.width))
+        let height = TextBoxLayout.height(of: text, width: width)
+        let x = min(max(point.x - width / 2, 0), max(0, pageSize.width - width))
+        let y = min(max(point.y - height / 2, 0), max(0, pageSize.height - height))
+        let object = PageObject(frame: CGRect(x: x, y: y, width: width, height: height), content: .text(text))
+        notebook.addObject(object, to: pageID, actionName: "Paste")
+    }
+
+    /// A text box with the toolbar's font, size, color and style, for pasted plain text.
+    func newText(_ string: String) -> TextObject {
+        var text = TextObject(text: string, fontSize: textFontSize, colorHex: textColorHex, font: textFont)
+        var flags: TextStyleRun.Flags = []
+        if textBold { flags.insert(.bold) }
+        if textItalic { flags.insert(.italic) }
+        if !flags.isEmpty { text.set(flags, everywhere: true) }
+        return text
     }
 
     /// A copy a little below and to the right, selected.

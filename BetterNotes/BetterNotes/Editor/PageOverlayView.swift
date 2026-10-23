@@ -313,7 +313,7 @@ final class PageOverlayView: UIView {
 
     /// Reads drags on objects while the select tool is on (see `ObjectDragGesture`).
     let objectGesture = ObjectDragGesture()
-    /// A finger held on an object selects it with any tool.
+    /// A finger held on an object selects it with any tool; on an empty spot it offers Paste.
     let objectLongPress = UILongPressGestureRecognizer()
     /// A tap with the text tool places or edits a text box (Pencil or finger). It does not
     /// take the touches away from a text box being typed in.
@@ -497,7 +497,10 @@ final class ObjectDragGesture: UIGestureRecognizer {
 final class PageTapGesture: UIGestureRecognizer {
     private var trackedTouch: UITouch?
     private var startOnGlass: CGPoint = .zero
+    private var startTime: TimeInterval = 0
     private(set) var location: CGPoint = .zero
+    /// A touch held this long is not a tap (a finger held still asks for Paste instead).
+    static let maximumDuration: TimeInterval = 0.5
 
     override init(target: Any?, action: Selector?) {
         super.init(target: target, action: action)
@@ -511,6 +514,7 @@ final class PageTapGesture: UIGestureRecognizer {
         }
         trackedTouch = touch
         startOnGlass = touch.location(in: nil)
+        startTime = touch.timestamp
         location = touch.location(in: view)
     }
 
@@ -523,6 +527,10 @@ final class PageTapGesture: UIGestureRecognizer {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         guard let trackedTouch, touches.contains(trackedTouch) else { return }
         location = trackedTouch.location(in: view)
+        guard trackedTouch.timestamp - startTime < Self.maximumDuration else {
+            state = .failed
+            return
+        }
         state = .ended  // a discrete gesture: recognized in one step
     }
 

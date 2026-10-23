@@ -10,17 +10,22 @@ struct TextEditing {
 }
 
 /// A `UITextView` for typing into a text box on the page. It is laid out like `TextBoxLayout`
-/// (same font, padding and line width), so the text does not jump when editing ends.
+/// (same fonts, padding and line width), so the text does not jump when editing ends.
 ///
 /// Like `PageCanvasView`, it keeps its own undo history: typing must not add steps to the
 /// notebook's history one letter at a time (and the notebook groups steps by hand, see
 /// `Notebook.undoManager`). Cmd+Z while typing undoes letters; when typing ends, the whole
 /// edit becomes one notebook step ("Edit Text").
-final class TextBoxEditorView: UITextView {
+///
+/// `allowsEditingTextAttributes` turns on Bold and Italic for selected words (the edit menu's
+/// Format items, Cmd+B, Cmd+I). Underline is turned off, because a text box does not store it.
+final class TextBoxEditorView: UITextView, UITextPasteDelegate {
     private let ownUndoManager = UndoManager()
     override var undoManager: UndoManager? { ownUndoManager }
+    private(set) var box: TextObject
 
-    init(text: TextObject) {
+    init(text: TextObject, typingBold: Bool = false, typingItalic: Bool = false) {
+        box = text
         super.init(frame: .zero, textContainer: nil)
         let padding = TextBoxLayout.padding
         textContainerInset = UIEdgeInsets(top: padding, left: padding, bottom: padding, right: padding)
@@ -29,16 +34,61 @@ final class TextBoxEditorView: UITextView {
         overrideUserInterfaceStyle = .light  // pages are white in dark mode too
         backgroundColor = UIColor.systemBlue.withAlphaComponent(0.06)
         layer.borderColor = UIColor.systemBlue.cgColor
-        apply(text)
-        self.text = text.text
+        allowsEditingTextAttributes = true
+        pasteDelegate = self
+        attributedText = TextBoxLayout.attributedString(for: text)
+        if text.text.isEmpty {
+            typingAttributes = TextBoxLayout.attributes(for: text, bold: typingBold, italic: typingItalic)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func apply(_ text: TextObject) {
-        font = TextBoxLayout.font(size: text.fontSize)
-        textColor = HexColor.color(text.colorHex) ?? .black
-        typingAttributes = TextBoxLayout.attributes(for: text)
+    /// The box as typed so far: the text and its bold and italic parts, in the box's own font,
+    /// size and color (whatever font a paste brought along).
+    var typedText: TextObject {
+        var text = box
+        let attributed = NSMutableAttributedString(attributedString: attributedText)
+        // An attachment (a picture pasted into the text) is a placeholder character; drop it.
+        let string = attributed.string as NSString
+        var index = string.length - 1
+        while index >= 0 {
+            if string.character(at: index) == 0xFFFC { attributed.deleteCharacters(in: NSRange(location: index, length: 1)) }
+            index -= 1
+        }
+        text.text = attributed.string
+        text.styles = TextBoxLayout.styles(from: attributed)
+        return text
+    }
+
+    // MARK: No underline
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(toggleUnderline(_:)) { return false }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    override func toggleUnderline(_ sender: Any?) {}  // Cmd+U
+
+    // MARK: Pasting into the text
+
+    /// Text pasted or dropped into the box comes in as plain text in the box's style, not with
+    /// the fonts, colors and links it had elsewhere; pictures are left out.
+    func textPasteConfigurationSupporting(
+        _ textPasteConfigurationSupporting: any UITextPasteConfigurationSupporting, transform item: any UITextPasteItem
+    ) {
+        guard item.itemProvider.canLoadObject(ofClass: NSString.self) else {
+            item.setNoResult()
+            return
+        }
+        // The item is only used on the main thread, where UIKit gave it to us.
+        nonisolated(unsafe) let item = item
+        _ = item.itemProvider.loadObject(ofClass: NSString.self) { loaded, _ in
+            let string = (loaded as? NSString).map { String($0) }  // a plain copy, safe to pass on
+            DispatchQueue.main.async {
+                if let string { item.setResult(string: string) } else { item.setNoResult() }
+            }
+        }
     }
 }
 
@@ -68,7 +118,7 @@ extension EditorCoordinator: UITextViewDelegate {
 
     /// A new, empty box whose first line is where the tap was, as wide as fits on the page.
     func newTextBox(at point: CGPoint, pageSize: CGSize) -> PageObject {
-        let text = TextObject(text: "", fontSize: textFontSize, colorHex: textColorHex)
+        let text = TextObject(text: "", fontSize: textFontSize, colorHex: textColorHex, font: textFont)
         let height = TextBoxLayout.height(of: text, width: TextBoxLayout.defaultWidth)
         let x = min(max(point.x - TextBoxLayout.padding, 0), max(0, pageSize.width - TextBoxLayout.minimumWidth))
         let width = max(TextBoxLayout.minimumWidth, min(TextBoxLayout.defaultWidth, pageSize.width - x))
@@ -81,7 +131,8 @@ extension EditorCoordinator: UITextViewDelegate {
         guard case .text(let text) = object.content else { return }
         endTextEditing()
         clearSelection(notify: false)
-        let view = TextBoxEditorView(text: text)
+        // A new box starts in the toolbar's bold and italic; an existing one keeps its own.
+        let view = TextBoxEditorView(text: text, typingBold: isNew && textBold, typingItalic: isNew && textItalic)
         view.delegate = self
         view.frame = object.frame
         view.layer.borderWidth = 1 / max(zoom, 0.01)
@@ -104,9 +155,8 @@ extension EditorCoordinator: UITextViewDelegate {
     // MARK: Typing
 
     func textViewDidChange(_ textView: UITextView) {
-        guard let editing = textEditing, editing.view === textView, case .text(var text) = editing.object.content else { return }
-        text.text = textView.text
-        textView.frame.size.height = TextBoxLayout.height(of: text, width: textView.frame.width)
+        guard let editing = textEditing, let view = editing.view, view === textView else { return }
+        view.frame.size.height = TextBoxLayout.height(of: view.typedText, width: view.frame.width)
     }
 
     func textViewDidEndEditing(_ textView: UITextView) {
@@ -121,18 +171,18 @@ extension EditorCoordinator: UITextViewDelegate {
     func endTextEditing() {
         guard let editing = textEditing else { return }
         textEditing = nil  // first: resigning the keyboard calls back into this
-        let typed = editing.view?.text ?? ""
+        let typed = editing.view?.typedText
         editing.view?.delegate = nil
         editing.view?.resignFirstResponder()
         editing.view?.removeFromSuperview()
 
         var object = editing.object
-        if case .text(var text) = object.content {
-            text.text = typed
-            object.content = .text(text)
-            object.frame.size.height = TextBoxLayout.height(of: text, width: object.frame.width)
+        if let typed {
+            object.content = .text(typed)
+            object.frame.size.height = TextBoxLayout.height(of: typed, width: object.frame.width)
         }
-        let isEmpty = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let finalText = if case .text(let text) = object.content { text.text } else { "" }
+        let isEmpty = finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         switch (editing.isNew, isEmpty) {
         case (true, true): break
         case (true, false): notebook.addObject(object, to: editing.pageID, actionName: "Add Text")
@@ -171,8 +221,23 @@ extension EditorCoordinator: UITextViewDelegate {
                 self?.changeText(of: object, on: selection.pageID, actionName: "Text Color") { $0.colorHex = hex }
             }
         }
+        let families = TextFont.allCases.map { family in
+            UIAction(title: family.displayName, state: family == text.font ? .on : .off) { [weak self] _ in
+                self?.changeText(of: object, on: selection.pageID, actionName: "Font") { $0.font = family }
+            }
+        }
+        let styles = [(TextStyleRun.Flags.bold, "Bold", "bold"), (.italic, "Italic", "italic")].map { flag, title, symbol in
+            let isOn = text.isEverywhere(flag)
+            return UIAction(title: title, image: UIImage(systemName: symbol), state: isOn ? .on : .off) { [weak self] _ in
+                self?.changeText(of: object, on: selection.pageID, actionName: title) { $0.set(flag, everywhere: !isOn) }
+            }
+        }
+        let font = UIMenu(
+            title: "Font", image: UIImage(systemName: "textformat"),
+            children: [UIMenu(options: .displayInline, children: families), UIMenu(options: .displayInline, children: styles)])
         return [
             edit,
+            font,
             UIMenu(title: "Font Size", image: UIImage(systemName: "textformat.size"), children: sizes),
             UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), children: colors),
         ]

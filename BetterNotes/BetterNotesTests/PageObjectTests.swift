@@ -88,7 +88,7 @@ struct FormatMigrationTests {
         #expect(meta.pages.count == 1 && meta.pages[0].objects.isEmpty)
     }
 
-    @Test func theFirstWriteKeepsTheVersion1FileOnceAndWritesVersion2() throws {
+    @Test func theFirstWriteKeepsTheVersion1FileOnceAndWritesTheCurrentVersion() throws {
         let folder = try TempFolder()
         let package = try makeNotebook(in: folder.url)
         let original = try makeVersion1(package)
@@ -99,7 +99,7 @@ struct FormatMigrationTests {
 
         let copy = package.url.appending(path: "meta.v1.json")
         #expect(try Data(contentsOf: copy) == original)
-        #expect(try package.readMeta().formatVersion == 2)
+        #expect(try package.readMeta().formatVersion == NotebookMeta.currentFormatVersion)
         #expect(try package.readMeta().title == "Renamed")
 
         // Later writes leave the copy alone.
@@ -119,14 +119,14 @@ struct FormatMigrationTests {
         await notebook.saveChanges()
 
         #expect(try Data(contentsOf: package.url.appending(path: "meta.v1.json")) == original)
-        #expect(try package.readMeta().formatVersion == 2)
+        #expect(try package.readMeta().formatVersion == NotebookMeta.currentFormatVersion)
         #expect(try package.readMeta().pages.count == 2)
     }
 
     @Test func newNotebooksAreVersion2WithoutACopy() throws {
         let folder = try TempFolder()
         let package = try makeNotebook(in: folder.url)
-        #expect(try package.readMeta().formatVersion == 2)
+        #expect(try package.readMeta().formatVersion == NotebookMeta.currentFormatVersion)
         #expect(!FileManager.default.fileExists(atPath: package.url.appending(path: "meta.v1.json").path))
     }
 }

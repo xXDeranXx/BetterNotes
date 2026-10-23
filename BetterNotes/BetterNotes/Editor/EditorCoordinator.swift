@@ -44,9 +44,14 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     var onSelectionCleared: (() -> Void)?
     /// True while the text tool is on: a tap places or edits a text box (M8).
     private(set) var placesText = false
-    /// Font size and color for new text boxes, from the toolbar.
+    /// Font, size, color and style of new text boxes, from the toolbar.
     private(set) var textFontSize = TextObject.defaultFontSize
     private(set) var textColorHex = "#000000"
+    private(set) var textFont: TextFont = .system
+    private(set) var textBold = false
+    private(set) var textItalic = false
+    /// Where a finger was held on an empty spot, for the Paste in the menu shown there.
+    var pasteTarget: PasteTarget?
     /// The text box being typed in, if any (see `EditorCoordinator+Text`).
     var textEditing: TextEditing?
     /// Typing ended: the editor takes the keyboard focus back (Cmd+Z, the system tool picker).
@@ -259,6 +264,9 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         placesText = settings.selected == .text && !settings.usesSystemToolPicker
         textFontSize = settings.textFontSize
         textColorHex = settings.textColorHex
+        textFont = settings.textFont
+        textBold = settings.textBold
+        textItalic = settings.textItalic
         favoriteColors = settings.favoriteColors
         // Another tool was picked: finish the text box being typed in.
         if settings.selected != lastSelectedTool { endTextEditing() }
@@ -293,8 +301,9 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         // tap handling showed a Paste bubble and took the keyboard from a new text box.
         let canvasTakesTouches = !(selectsObjects || placesText)
         if canvas.isUserInteractionEnabled != canvasTakesTouches { canvas.isUserInteractionEnabled = canvasTakesTouches }
-        // A finger long press selects objects with the other tools; not while fingers draw.
-        overlay.objectLongPress.isEnabled = !selectsObjects && !allowsFingerDrawing && !usesSystemToolPicker
+        // A finger long press selects an object, or offers Paste on an empty spot; not while
+        // fingers draw. With the select tool it only offers Paste (drags own the objects there).
+        overlay.objectLongPress.isEnabled = !allowsFingerDrawing && !usesSystemToolPicker
         #if targetEnvironment(simulator)
         overlay.shapeGesture.allowFingers(true)
         #else

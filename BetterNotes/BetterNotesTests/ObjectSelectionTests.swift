@@ -82,7 +82,7 @@ struct ObjectSelectionTests {
         let setup = try makeSetup()
         #expect(!setup.overlay.canvas.drawingGestureRecognizer.isEnabled)
         #expect(setup.overlay.objectGesture.isEnabled)
-        #expect(!setup.overlay.objectLongPress.isEnabled)
+        #expect(setup.overlay.objectLongPress.isEnabled)  // only for Paste on an empty spot
 
         var pen = ToolSettings()
         pen.selected = .pen(.pen)

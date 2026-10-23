@@ -35,15 +35,107 @@ nonisolated struct ImageObject: Equatable, Sendable {
     var file: String
 }
 
-/// A text box: plain text in the system font. Its width is chosen by the user; its height
-/// follows the text (`TextBoxLayout.height`).
+/// A text box: text in one font family, size and color, with bold and italic words. Its width
+/// is chosen by the user; its height follows the text (`TextBoxLayout.height`).
+///
+/// `text` stays a plain string (search, copy and export read it); bold and italic are kept
+/// apart in `styles`, like a list of `<b>`/`<i>` ranges over the string.
 nonisolated struct TextObject: Equatable, Sendable {
     var text: String
     var fontSize: Double
     /// "#RRGGBB", like the pen colors.
     var colorHex: String
+    var font: TextFont = .system
+    /// The bold and italic parts of `text`, sorted, not overlapping, never empty or plain.
+    var styles: [TextStyleRun] = []
 
     static let defaultFontSize: Double = 16
+
+    /// The length `styles` count in: UTF-16 units, like `NSString` and `NSRange` (an emoji
+    /// counts 2 here and 1 in `String.count`).
+    var utf16Length: Int { (text as NSString).length }
+
+    /// Bold and italic of every UTF-16 unit, from `styles`.
+    func styleFlags() -> [TextStyleRun.Flags] {
+        var flags = [TextStyleRun.Flags](repeating: [], count: utf16Length)
+        for run in styles {
+            let start = max(0, min(run.start, flags.count))
+            let end = max(start, min(run.start + run.length, flags.count))
+            for index in start..<end { flags[index].formUnion(run.flags) }
+        }
+        return flags
+    }
+
+    /// True when every character is bold (or italic), and there is text.
+    func isEverywhere(_ flag: TextStyleRun.Flags) -> Bool {
+        let flags = styleFlags()
+        return !flags.isEmpty && flags.allSatisfy { $0.contains(flag) }
+    }
+
+    /// Makes the whole text bold (or italic), or not, keeping the other style as it is.
+    mutating func set(_ flag: TextStyleRun.Flags, everywhere on: Bool) {
+        styles = TextStyleRun.runs(from: styleFlags().map { on ? $0.union(flag) : $0.subtracting(flag) })
+    }
+
+    /// Repairs `styles` read from a file: clamped to the text, sorted, merged.
+    mutating func normalizeStyles() {
+        styles = TextStyleRun.runs(from: styleFlags())
+    }
+}
+
+/// The font families a text box can use. The raw value is what `meta.json` stores; an unknown
+/// value (written by a newer app) reads as `.system`.
+nonisolated enum TextFont: String, CaseIterable, Sendable {
+    case system, serif, rounded, monospaced, georgia, noteworthy
+
+    var displayName: String {
+        switch self {
+        case .system: "System"
+        case .serif: "Serif"
+        case .rounded: "Rounded"
+        case .monospaced: "Monospaced"
+        case .georgia: "Georgia"
+        case .noteworthy: "Noteworthy"
+        }
+    }
+}
+
+/// A bold and/or italic part of a text box's text, in UTF-16 units (see `TextObject.utf16Length`).
+nonisolated struct TextStyleRun: Equatable, Codable, Sendable {
+    var start: Int
+    var length: Int
+    var bold: Bool
+    var italic: Bool
+
+    struct Flags: OptionSet, Equatable, Sendable {
+        let rawValue: UInt8
+        static let bold = Flags(rawValue: 1)
+        static let italic = Flags(rawValue: 2)
+    }
+
+    var flags: Flags {
+        var flags: Flags = []
+        if bold { flags.insert(.bold) }
+        if italic { flags.insert(.italic) }
+        return flags
+    }
+
+    /// The runs for per-unit flags: one run per stretch of equal, non-plain flags.
+    static func runs(from flags: [Flags]) -> [TextStyleRun] {
+        var runs: [TextStyleRun] = []
+        var index = 0
+        while index < flags.count {
+            let current = flags[index]
+            var end = index + 1
+            while end < flags.count, flags[end] == current { end += 1 }
+            if !current.isEmpty {
+                runs.append(TextStyleRun(
+                    start: index, length: end - index, bold: current.contains(.bold), italic: current.contains(.italic)))
+            }
+            index = end
+        }
+        return runs
+    }
 }
 
 // MARK: meta.json
@@ -53,7 +145,7 @@ nonisolated struct TextObject: Equatable, Sendable {
 /// (Swift's automatic coding of enums with values nests them in awkward `_0` keys).
 nonisolated extension PageObject: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, x, y, width, height, type, file, text, fontSize, colorHex
+        case id, x, y, width, height, type, file, text, fontSize, colorHex, font, styles
     }
 
     init(from decoder: Decoder) throws {
@@ -67,10 +159,15 @@ nonisolated extension PageObject: Codable {
         case "image":
             content = .image(ImageObject(file: try container.decode(String.self, forKey: .file)))
         case "text":
-            content = .text(TextObject(
+            // `font` and `styles` came with format version 3; older text boxes have neither.
+            var text = TextObject(
                 text: try container.decode(String.self, forKey: .text),
                 fontSize: try container.decode(Double.self, forKey: .fontSize),
-                colorHex: try container.decode(String.self, forKey: .colorHex)))
+                colorHex: try container.decode(String.self, forKey: .colorHex),
+                font: (try container.decodeIfPresent(String.self, forKey: .font)).flatMap(TextFont.init(rawValue:)) ?? .system,
+                styles: try container.decodeIfPresent([TextStyleRun].self, forKey: .styles) ?? [])
+            text.normalizeStyles()
+            content = .text(text)
         case let other:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: container, debugDescription: "Unknown object type \"\(other)\"")
@@ -93,6 +190,8 @@ nonisolated extension PageObject: Codable {
             try container.encode(text.text, forKey: .text)
             try container.encode(text.fontSize, forKey: .fontSize)
             try container.encode(text.colorHex, forKey: .colorHex)
+            try container.encode(text.font.rawValue, forKey: .font)
+            if !text.styles.isEmpty { try container.encode(text.styles, forKey: .styles) }
         }
     }
 

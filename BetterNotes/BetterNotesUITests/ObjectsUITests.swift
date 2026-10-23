@@ -83,6 +83,107 @@ final class ObjectsUITests: XCTestCase {
         _ = shot("closed")
     }
 
+    /// Holding a finger on an empty spot offers Paste there, without iPadOS asking "Allow Paste?";
+    /// an image lands under the finger, text becomes a text box, and the text tool does not also
+    /// place a box when the finger lifts.
+    @MainActor
+    func testLongPressPastesImageAndTextWhereTheFingerWas() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
+        app.buttons["Add"].tap()
+        app.buttons["New Notebook"].firstMatch.tap()
+        let create = app.buttons["Create"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 10))
+        create.tap()
+        XCTAssertTrue(app.navigationBars.firstMatch.buttons["Undo"].waitForExistence(timeout: 10))
+        sleep(2)
+        let window = app.windows.firstMatch
+        func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
+            window.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        }
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        func tapPasteInMenu(_ name: String) {
+            let paste = app.menuItems["Paste"].exists ? app.menuItems["Paste"] : app.buttons["Paste"]
+            XCTAssertTrue(paste.waitForExistence(timeout: 3), "no Paste after holding a finger: \(name)")
+            _ = shot(name)
+            paste.tap()
+            XCTAssertFalse(springboard.buttons["Allow Paste"].waitForExistence(timeout: 2), "iPadOS asked to allow pasting")
+            sleep(2)
+        }
+
+        // An image, with the select tool, held in the lower left.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let red = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 200), format: format).pngData { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 300, height: 200))
+        }
+        UIPasteboard.general.setData(red, forPasteboardType: "public.png")
+        app.buttons["Select images and text"].firstMatch.tap()
+        point(0.3, 0.65).press(forDuration: 1.0)
+        tapPasteInMenu("image menu")
+        let pasted = shot("image pasted")
+        XCTAssertGreaterThan(redFraction(pasted, around: CGPoint(x: 0.3, y: 0.65)), 0.5, "the image is not under the finger")
+        XCTAssertLessThan(redFraction(pasted, around: CGPoint(x: 0.7, y: 0.3)), 0.01, "the image is somewhere else too")
+
+        // Text, with the text tool, held in the upper right: a text box, and no extra empty box.
+        UIPasteboard.general.string = "Pasted words"
+        app.buttons["Text box"].firstMatch.tap()
+        sleep(1)
+        point(0.7, 0.3).press(forDuration: 1.0)
+        XCTAssertFalse(app.keyboards.firstMatch.waitForExistence(timeout: 1), "holding placed a text box for typing")
+        tapPasteInMenu("text menu")
+        _ = shot("text pasted")
+
+        // The new box is a text box: selecting it shows Edit Text.
+        app.buttons["Select images and text"].firstMatch.tap()
+        point(0.7, 0.3).tap()
+        let edit = app.menuItems["Edit Text"].exists ? app.menuItems["Edit Text"] : app.buttons["Edit Text"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 3), "no text box where the text was pasted")
+        _ = shot("text selected")
+        let font = app.menuItems["Font"].exists ? app.menuItems["Font"] : app.buttons["Font"]
+        font.tap()
+        sleep(1)
+        _ = shot("font menu")
+        let bold = app.menuItems["Bold"].exists ? app.menuItems["Bold"] : app.buttons["Bold"]
+        XCTAssertTrue(bold.waitForExistence(timeout: 2), "no Bold in the Font menu")
+        bold.tap()
+        sleep(1)
+        _ = shot("bold")
+
+        // The text tool's options: fonts, size, B and I.
+        app.buttons["Text box"].firstMatch.tap()
+        sleep(1)
+        app.buttons["Text box"].firstMatch.tap()
+        sleep(1)
+        XCTAssertTrue(app.buttons["Italic"].waitForExistence(timeout: 3), "no Italic in the text options")
+        app.buttons["Noteworthy"].firstMatch.tap()
+        app.buttons["Bold"].firstMatch.tap()
+        sleep(1)
+        _ = shot("text options")
+    }
+
+    private func shot(_ name: String) -> UIImage {
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        return shot.image
+    }
+
+    /// Share of clearly red pixels in a small square around a point (normalized coordinates).
+    private func redFraction(_ image: UIImage, around center: CGPoint) -> Double {
+        guard let cg = image.cgImage else { return 0 }
+        let side = CGFloat(min(cg.width, cg.height)) * 0.04
+        let rect = CGRect(
+            x: center.x * CGFloat(cg.width) - side / 2, y: center.y * CGFloat(cg.height) - side / 2, width: side, height: side
+        ).integral
+        guard let crop = cg.cropping(to: rect) else { return 0 }
+        return redFraction(UIImage(cgImage: crop))
+    }
+
     /// Share of pixels that are clearly red.
     private func redFraction(_ image: UIImage) -> Double {
         guard let cg = image.cgImage else { return 0 }

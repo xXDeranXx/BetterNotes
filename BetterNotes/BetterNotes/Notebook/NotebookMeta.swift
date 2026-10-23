@@ -95,8 +95,11 @@ nonisolated struct PageMeta: Codable, Equatable, Identifiable, Sendable {
 /// - 2 (milestone 8): each page may have `objects` (images, text boxes). A version 1 file
 ///   reads as a version 2 file without objects; the first write keeps the old file as
 ///   `meta.v1.json` (see `NotebookPackage.preserveOlderFormat`).
+/// - 3: text boxes may have a `font` family and `styles` (bold and italic ranges). A version 2
+///   text box reads as plain text in the system font; the first write keeps `meta.v2.json`.
+///   (Without the new number, a version 2 app would open the file and drop the styles on save.)
 nonisolated struct NotebookMeta: Codable, Equatable, Sendable {
-    static let currentFormatVersion = 2
+    static let currentFormatVersion = 3
 
     var formatVersion: Int
     var id: UUID

@@ -29,7 +29,7 @@ struct MetaJSONTests {
         try package.writeMeta(meta)
 
         let json = try String(contentsOf: package.metaURL, encoding: .utf8)
-        #expect(json.contains("\"formatVersion\" : 2"))
+        #expect(json.contains("\"formatVersion\" : 3"))
         #expect(try package.readMeta().pages.map(\.id) == pages.map(\.id))
     }
 

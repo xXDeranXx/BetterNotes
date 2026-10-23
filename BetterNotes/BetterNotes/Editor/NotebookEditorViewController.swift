@@ -20,17 +20,19 @@ final class UndoRoutingView: UIView {
     override var canBecomeFirstResponder: Bool { true }
     override var undoManager: UndoManager? { notebook.undoManager }
 
-    /// Cmd+V with an image on the clipboard puts it on the page (M8). Text and other content
-    /// are left alone. PencilKit's lasso has its own paste for ink, which this does not touch.
-    var onPasteImage: (() -> Void)?
+    /// Paste puts the clipboard's image or text on the page (M8): Cmd+V, and the Paste in the
+    /// menu a finger held on an empty spot shows (that menu takes its item from here). Text being
+    /// typed handles its own paste (the text view is asked first). PencilKit's lasso has its own
+    /// paste for ink, which this does not touch.
+    var onPaste: (() -> Void)?
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if action == #selector(paste(_:)) { return onPasteImage != nil && UIPasteboard.general.hasImages }
+        if action == #selector(paste(_:)) { return onPaste != nil && PageClipboard.hasContent }
         return super.canPerformAction(action, withSender: sender)
     }
 
     override func paste(_ sender: Any?) {
-        onPasteImage?()
+        onPaste?()
     }
 }
 
@@ -84,7 +86,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     override func loadView() {
         let routing = UndoRoutingView(notebook: notebook)
-        routing.onPasteImage = { [weak self] in self?.pasteImage() }
+        routing.onPaste = { [weak self] in self?.paste() }
         view = routing
     }
 
@@ -331,12 +333,35 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     /// Image bytes from Photos or Files: shrunk in the background, then put on the page on screen.
     func insertImage(data: Data) {
-        insertPrepared { try ObjectImageImport.prepare(data) }
+        insertPrepared(at: nil) { try ObjectImageImport.prepare(data) }
+    }
+
+    /// The clipboard's content where a finger was held (the Paste menu), or in the middle of the
+    /// screen (Cmd+V): a text box copied here, else an image, else text as a new text box.
+    func paste() {
+        let target = coordinator.takePasteTarget().map { (id: $0.pageID, point: $0.point) }
+        let board = UIPasteboard.general
+        if let copied = PageClipboard.copiedTextBox() {
+            pasteText(copied.text, width: copied.width, at: target)
+        } else if board.hasImages {
+            pasteImage(at: target)
+        } else if let string = board.string, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pasteText(coordinator.newText(string), width: nil, at: target)
+        } else {
+            onObjectError?("There is nothing on the clipboard that can go on a page. Copy an image or some text first.")
+        }
+    }
+
+    private func pasteText(_ text: TextObject, width: CGFloat?, at target: (id: UUID, point: CGPoint)?) {
+        guard let target = target ?? pageAtScreenCenter(),
+            let pageSize = coordinator.visibleOverlays[target.id]?.bounds.size
+        else { return }
+        coordinator.pasteText(text, width: width, on: target.id, at: target.point, pageSize: pageSize)
     }
 
     /// The clipboard's image. Reading its bytes keeps a PNG screenshot a PNG; a picture that
     /// only exists as a `UIImage` is stored as JPEG unless it has transparency.
-    func pasteImage() {
+    func pasteImage(at target: (id: UUID, point: CGPoint)? = nil) {
         let pasteboard = UIPasteboard.general
         guard pasteboard.hasImages else {
             onObjectError?("There is no image on the clipboard. Copy an image first, for example a screenshot or a photo.")
@@ -344,7 +369,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         }
         for type in [UTType.png, .jpeg, .heic] {
             if let data = pasteboard.data(forPasteboardType: type.identifier) {
-                insertImage(data: data)
+                insertPrepared(at: target) { try ObjectImageImport.prepare(data) }
                 return
             }
         }
@@ -352,15 +377,18 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             onObjectError?("The clipboard's image could not be read.")
             return
         }
-        insertPrepared { try ObjectImageImport.prepare(image) }
+        insertPrepared(at: target) { try ObjectImageImport.prepare(image) }
     }
 
-    private func insertPrepared(_ prepare: @escaping @Sendable () throws -> ObjectImageImport.Prepared) {
+    /// `target` is where the image goes; nil means the middle of the screen when it is ready.
+    private func insertPrepared(
+        at target: (id: UUID, point: CGPoint)?, _ prepare: @escaping @Sendable () throws -> ObjectImageImport.Prepared
+    ) {
         Task {
             do {
                 // Shrinking a 12-megapixel photo takes a moment; not on the main thread.
                 let prepared = try await Task.detached(priority: .userInitiated) { try prepare() }.value
-                guard let target = pageAtScreenCenter() else { return }
+                guard let target = target ?? pageAtScreenCenter() else { return }
                 try notebook.insertImage(prepared, on: target.id, center: target.point)
             } catch {
                 onObjectError?(error.localizedDescription)
