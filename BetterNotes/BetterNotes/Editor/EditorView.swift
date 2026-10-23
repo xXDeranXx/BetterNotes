@@ -233,7 +233,8 @@ struct EditorView: View {
         Button(title, systemImage: symbol, action: action)
             .labelStyle(.iconOnly)
             .font(.title3)
-            .foregroundStyle(theme.isTinted ? theme.primaryText : Color.accentColor)
+            // Neutral icons like the pen tools next to them (Goodnotes); color is kept for selection.
+            .foregroundStyle(theme.primaryText)
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }

@@ -144,7 +144,10 @@ struct OutlineList: View {
             Button {
                 if let page = navigator.currentPageID ?? notebook.pages.first?.id { addToOutline(page) }
             } label: {
-                Label("Add Page", systemImage: "plus")
+                Label("Add to Outline", systemImage: "plus")
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)

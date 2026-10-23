@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 
 /// Everything that belongs to one window (SPEC, architecture decision 5): its tabs, which one
 /// is shown, and with them the notebooks' models and undo histories. Each window creates its
@@ -38,8 +39,12 @@ final class WindowSession {
     /// The saves that release old tabs run one after another; tests wait for this.
     @ObservationIgnored private(set) var releaseTask: Task<Void, Never>?
 
+    /// The window's scene, so another window can bring this one forward (`WindowDirectory`).
+    @ObservationIgnored weak var scene: UIWindowScene?
+
     init(registry: OpenNotebookRegistry = .shared) {
         self.registry = registry
+        WindowDirectory.register(self)
     }
 
     /// A window that goes away (the user swipes it away) lets go of all its notebooks. Their
@@ -51,7 +56,9 @@ final class WindowSession {
     // MARK: Tabs
 
     /// Opens a notebook in a new tab and shows it. A notebook that already has a tab in this
-    /// window shows that tab instead; one that is open in another window is refused.
+    /// window shows that tab instead; one that is open in another window brings that window
+    /// forward with its tab shown (M9), and this window stays as it is
+    /// (`NotebookError.openInOtherWindow`, which callers do not show as an error).
     func open(_ package: NotebookPackage) throws {
         if let tab = tab(for: package.url) {
             try select(tab.id)
@@ -59,6 +66,7 @@ final class WindowSession {
         }
         let id = UUID()
         guard registry.claim(package.url, by: NotebookOwner(window: windowID, tab: id)) else {
+            if WindowDirectory.bringForward(package.url, registry: registry) { throw NotebookError.openInOtherWindow }
             throw NotebookError.alreadyOpen
         }
         do {

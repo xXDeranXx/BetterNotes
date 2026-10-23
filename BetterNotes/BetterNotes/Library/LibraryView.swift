@@ -231,7 +231,11 @@ struct LibraryView: View {
 
     private var backupReminder: some View {
         HStack(spacing: 12) {
-            Image(systemName: "externaldrive.badge.timemachine").foregroundStyle(.tint)
+            Image(systemName: "externaldrive.badge.timemachine")
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Color.orange.gradient, in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.index.lastBackup == nil ? "No backup yet" : "Your last backup is older than \(LibraryIndex.backupReminderDays) days")
                     .font(.subheadline.weight(.semibold))
@@ -244,8 +248,11 @@ struct LibraryView: View {
             Button("Not Now", systemImage: "xmark") { isReminderDismissed = true }
                 .labelStyle(.iconOnly).buttonStyle(.plain).foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 20).padding(.vertical, 10)
-        .background(.regularMaterial)
+        .padding(14)
+        // A card on the grey library background (like Goodnotes' notices), not a full-width band.
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+        .padding(.horizontal, 20).padding(.top, 8)
     }
 
     private var breadcrumbBar: some View {
@@ -586,6 +593,8 @@ struct LibraryView: View {
             do {
                 try await session.openAnimated(package)
                 model.recordOpened(notebook)
+            } catch NotebookError.openInOtherWindow {
+                model.recordOpened(notebook)  // its window came forward instead; nothing to show here
             } catch {
                 model.errorMessage = error.localizedDescription
             }

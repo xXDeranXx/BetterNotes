@@ -60,6 +60,7 @@ Documents/
 - `formatVersion` (starts at 1; any change to the format increases it and comes with a migration)
 - `id`, `title`, `createdAt`, `updatedAt`, cover color
 - `pages`: an ordered list, one entry per PDF page, **in the same order as the pages in `document.pdf`**: `id` (random UUID), `template` (`pdf` for imported pages, otherwise `blank`, `lined`, `grid`, `dotted`), page size, rotation
+- `outline` (format version 4): a flat list of entries (`title`, `pageID`, `level`), shown in page order
 - `objects` (format version 2): images and text boxes, stored in each page's entry, with position and size in **page coordinates** (points, top-left origin, y down, the same as ink; see `PageGeometry`)
 
 Rules:
@@ -146,7 +147,7 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 
 ## Later, one at a time
 - **Tabs like Goodnotes** (designed 2026-10-23, full design in `docs/DECISIONS.md`, "Tabs, design"): several notebooks as tabs in one window. Only the active tab has a `PDFView`, canvases and render work; never keep several `PDFView`s alive. No tab limit; the 3 most recent tabs keep their `Notebook` model and undo, older ones are released to URL, title, scroll and zoom (number measured with the debug overlay). A Home button shows the library and the tabs stay; opening from the library makes a new tab. The strip shows whenever a tab is open (× to close, drag to reorder, Close Other Tabs), and tabs are restored on launch (`@SceneStorage`). Library actions on a background tab are allowed (the tab is released and follows the new place). `WindowSession` holds tabs; `OpenNotebookRegistry` records window and tab, and a tab counts as open while it exists. Built 2026-10-23 (see `docs/DECISIONS.md`, "Tabs, steps").
-- **Whiteboard / infinite canvas** (designed 2026-10-23, see `docs/DECISIONS.md`, "Whiteboard, design"): one `PKCanvasView` as its own scroll view (about 10000 x 10000 pt, one `PKDrawing`), objects in a layer below it, a `.inkbook` with `kind: whiteboard` (format version 4). Starts with a spike on the iPad (memory, heat, frame rate with a lot of ink) using the debug overlay.
+- **Whiteboard / infinite canvas** (designed 2026-10-23, see `docs/DECISIONS.md`, "Whiteboard, design"): one `PKCanvasView` as its own scroll view (about 10000 x 10000 pt, one `PKDrawing`), objects in a layer below it, a `.inkbook` with `kind: whiteboard` (format version 5; 4 went to the outline). Starts with a spike on the iPad (memory, heat, frame rate with a lot of ink) using the debug overlay.
 - **Scan documents** (wish, 2026-10-23): a "Scan Document" action in the library's "+" menu and in the page insert menu. Uses VisionKit's `VNDocumentCameraViewController` (Apple, free, needs a camera usage text `NSCameraUsageDescription` in `BetterNotes/Info.plist`; VisionKit is not on the framework list under "Constraints", so this entry is the discussion). Each scanned page is an image, so it reuses "image as a page" from M4 (a new notebook from the scan, or pages inserted after the current page). **Compression** (decided 2026-10-23): a camera scan is a photo of about 12 megapixels, and every page operation rewrites the whole `document.pdf` (see M4, save time on image-heavy PDFs, not yet measured), so scans are made small on purpose: shrink to about 200 dpi (1654 px wide for A4; the existing `makeImagePage` allows about 290 dpi), compress as JPEG at quality about 0.7, and make sure the PDF really embeds the JPEG (UIKit's PDF renderer does not guarantee it; a test checks the size of a scanned page). A first probe with a synthetic image gave 848 KB per page but was too compressible to be representative; measure a real scan on the iPad and then decide whether a quality setting (high, normal, small) is needed. Text recognition is out of scope (see "Out of scope"). The simulator has no camera, so it can only be checked on the iPad. Small; fits right after M6.
 - **Debug overlay** (built 2026-10-23, to be deleted later; see `docs/DECISIONS.md`, "Debug overlay"): a panel on every screen with CPU, memory, FPS, thermal state, canvases, `k` and loaded drawings, plus CSV recording. It is switched on with "Show debug overlay" in the toolbar settings. To remove it, delete `Debug/`, `DebugOverlayTests`, `.debugOverlay()` in `RootView` and the "Debug" section in `ToolbarSettingsView`. GPU use cannot be shown (no public API).
 - **Known small bugs, not urgent** (developer, 2026-10-23: "I can live with it"):
@@ -200,8 +201,9 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 **Saving and data safety**
 - Autosave about 2 s after a change, when a canvas leaves the screen, on going to the background and on close; per-page revision counters so a change during a save stays unsaved; a failed save shows Retry and blocks closing. An unreadable drawing is kept as `<id>.drawing.unreadable`.
 - `document.pdf` and `meta.json` change together through `pending/` + a `COMMIT` marker (`NotebookPackage.commitStructure`, finished or discarded on open). While a page change is unsaved, `meta.json` is never written alone. Object changes rewrite only `meta.json`.
-- A format change bumps `formatVersion` (now 3) and keeps the old file once as `meta.v<N>.json`; an app refuses newer versions. New fields are optional with defaults. Image files in `objects/` are written before the `meta.json` that names them and are never deleted.
-- One tab of one window per notebook (`OpenNotebookRegistry`, which records the owning window and tab); the shown tab and anything open in another window cannot be moved, renamed or trashed.
+- A format change bumps `formatVersion` (now 4) and keeps the old file once as `meta.v<N>.json`; an app refuses newer versions. New fields are optional with defaults. Image files in `objects/` are written before the `meta.json` that names them and are never deleted.
+- One tab of one window per notebook (`OpenNotebookRegistry`, which records the owning window and tab); the shown tab and anything open in another window cannot be moved, renamed or trashed. Opening it elsewhere brings its window forward (`WindowDirectory`, `NotebookError.openInOtherWindow` is not an error to show).
+- Outline: entries point at page ids, are shown in page order and hidden (never removed) when their page is gone; every change goes through `Notebook.setOutline`. Bookmarks are written into a new `PDFDocument()` filled with page copies (PDFKit drops them on a renderer-made file).
 - Tabs: `WindowSession.notebook` is the active tab's model; a tab is released only after a successful save; `EditorView` is keyed by tab id and writes to its own `NotebookTab` (never `session.activeTab`); finish typing (`finishTextEditing`) before every tab switch or close. Library actions on a background tab go through `detachTabs`/`reattach` (a detached tab can be neither shown nor closed). Restored tabs live in `TabStore` (`UserDefaults`, per window key; `@SceneStorage` only for the key, it goes stale when the app is killed), paths relative to the library root; the shown tab is selected only once the app is active. Drawings of off-screen, saved pages are evicted from memory.
 - Library: `.library.json` keys favorites and recents by notebook **id**; a folder's look lives in `.folder.json` inside it; trash items keep `origin.json` for Put Back and are purged after 30 days; name clashes get "Name (2)".
 
@@ -216,6 +218,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 - Confirmation dialogs are attached to the button or tile they belong to (on the iPad they are popovers pointing at it). One `fileImporter` per view.
 - No text fields in popovers the Pencil reaches (Scribble types into them): put them behind a dialog.
 - Main-thread rendering (thumbnails, covers) pauses while a window animates (`TransitionGate`) and at thermal state serious.
+- Look: follow Goodnotes' design (decided 2026-10-23, M9), not Apple-native glass; keep accessibility labels stable for the UI tests.
 - The developer is left-handed: the Pencil's tool palette opens to the right (a setting).
 
 ## Milestones
@@ -234,8 +237,9 @@ Each milestone ends with: the app running on the developer's iPad, tests passing
 - **M8** images and text boxes (Photos, Files, Paste, hold-to-paste, select, move, resize, arrange, fonts, bold and italic).
 
 ### Order of work (updated 2026-10-23)
-Design talk for tabs and the whiteboard done (2026-10-23). Debug overlay done. **Tabs** done (steps 1 to 6, themes, toolbar in the top bar, rename from the tab menu; confirmed on the iPad; the tab bug was not reproduced, page moves into a background tab are untested by choice). Next: M9 (polish; "bring the window forward" uses the tab registry) -> the **whiteboard spike**.
+Tabs done and confirmed. **M9 built** (outline, Goodnotes-style polish, windows; iPad check pending). Next: the developer's iPad checklist for M9 and a week of lectures -> the **whiteboard spike**.
 
-### Milestone 9: Daily-use polish
+### Milestone 9: Daily-use polish (built 2026-10-23, see `docs/DECISIONS.md`, "M9")
+Added: an outline tab in the sidebar (PDF bookmarks or guessed titles, own nested entries, exported as bookmarks) and a Goodnotes-style polish of the interface.
 Build: polish for multiple windows and Split View (enabled since milestone 1): opening a notebook that is already open brings its window forward, drag and drop between windows; dark mode, empty and error states, layout checks in both orientations.
 Check yourself: use the app for one week of lectures instead of Goodnotes and note what bothers you; that list drives the "Later" features.

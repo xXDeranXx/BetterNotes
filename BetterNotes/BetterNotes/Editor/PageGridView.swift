@@ -33,9 +33,12 @@ struct PageGridView: View {
                         cell(for: page, number: index + 1)
                     }
                 }
-                .padding(20)
+                .padding(24)
                 .animation(.easeInOut(duration: 0.25), value: notebook.pages.map(\.id))
             }
+            // Grey behind the pages, like Goodnotes, so white pages stand out.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.secondarySystemBackground).ignoresSafeArea())
             .navigationTitle(isSelecting ? "\(selectedIDs.count) selected" : "Pages")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }

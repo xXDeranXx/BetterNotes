@@ -38,10 +38,29 @@ struct PageThumbnailView: View {
             : CGSize(width: box.height * aspect, height: box.height)
     }
 
+    /// Goodnotes style: a page with slightly rounded corners and a soft shadow; the current or
+    /// selected page gets a ring a little outside its edge.
+    private static let corner: CGFloat = 4
+
     private var border: some View {
-        Rectangle().stroke(
-            isHighlighted ? Color.accentColor : Color.secondary.opacity(0.4),
-            lineWidth: isHighlighted ? 3 : 1)
+        RoundedRectangle(cornerRadius: Self.corner)
+            .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5)
+    }
+
+    private var ring: some View {
+        RoundedRectangle(cornerRadius: Self.corner + 3)
+            .strokeBorder(Color.accentColor, lineWidth: 2.5)
+            .padding(-5)
+            .opacity(isHighlighted ? 1 : 0)
+    }
+
+    /// The page's look: corners, a hairline, a shadow and the ring.
+    private func pageStyle<Content: View>(_ content: Content) -> some View {
+        content
+            .clipShape(RoundedRectangle(cornerRadius: Self.corner))
+            .overlay(border)
+            .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+            .overlay(ring)
     }
 
     var body: some View {
@@ -55,27 +74,30 @@ struct PageThumbnailView: View {
                     let now = fit(aspect: aspect, in: slot.size)
                     let sideways = turn % 180 != 0
                     let target = fit(aspect: sideways ? 1 / aspect : aspect, in: slot.size)
-                    Image(uiImage: image)
+                    pageStyle(Image(uiImage: image)
                         .resizable()
-                        .frame(width: now.width, height: now.height)
-                        .overlay(border)
+                        .frame(width: now.width, height: now.height))
                         .scaleEffect(sideways ? target.width / now.height : 1)
                         .rotationEffect(.degrees(Double(turn)))
                         .position(x: slot.size.width / 2, y: slot.size.height / 2)
                 } else {
                     // Until the picture arrives: a white page of the right shape.
                     let shape = fit(aspect: page.size.width / page.size.height, in: slot.size)
-                    Color.white
-                        .frame(width: shape.width, height: shape.height)
-                        .overlay(border)
+                    pageStyle(Color.white
+                        .frame(width: shape.width, height: shape.height))
                         .position(x: slot.size.width / 2, y: slot.size.height / 2)
                 }
             }
             .aspectRatio(slotAspect, contentMode: .fit)
             .animation(.easeInOut(duration: 0.3), value: page.rotation)
+            // The number sits in a small capsule that fills with the accent color when highlighted.
             Text("\(number)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(isHighlighted ? Color.accentColor : .secondary)
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(isHighlighted ? Color.white : .secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(isHighlighted ? Color.accentColor : .clear, in: Capsule())
+                .padding(.top, 4)
         }
         // The key changes when the page's ink or rotation changes; SwiftUI then cancels the old
         // render and starts a new one, which also waits out a burst of strokes.
@@ -175,7 +197,7 @@ struct PageSidebar: View {
             ScrollView {
                 // Lazy: only the pictures on screen are created (and rendered), which keeps a
                 // 300-page notebook light. (A ScrollView, not a List: see SPEC, M3.)
-                LazyVStack(spacing: 14) {
+                LazyVStack(spacing: 16) {
                     ForEach(Array(notebook.pages.enumerated()), id: \.element.id) { index, page in
                         PageThumbnailView(
                             page: page, number: index + 1, thumbnails: thumbnails,
@@ -206,7 +228,8 @@ struct PageSidebar: View {
                     }
                     AddPageButton(actions: actions, insertKind: $insertKind)
                 }
-                .padding(12)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 12)
                 // Pages slide into their new places after an insert, delete or reorder.
                 .animation(.easeInOut(duration: 0.25), value: notebook.pages.map(\.id))
             }

@@ -143,11 +143,31 @@ struct FolderTile: View {
                     RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: isDropTargeted ? 3 : 0))
             Text(folder.name).font(.subheadline.weight(.semibold)).lineLimit(2)
                 .multilineTextAlignment(.center).frame(width: libraryTileWidth)
-            if let size { Text(StorageSize.format(size)).font(.caption).foregroundStyle(.secondary) }
+            Text(subtitle).font(.caption).foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
         .overlay(alignment: .topLeading) { SelectionMark(isSelected: isSelected).padding(6) }
-        .task(id: folder.url) { size = await StorageSize.measure(folder.url) }
+        .task(id: folder.url) {
+            itemCount = FolderTile.countItems(in: folder.url)
+            size = await StorageSize.measure(folder.url)
+        }
+    }
+
+    @State private var itemCount: Int?
+
+    /// "3 items · 12 MB", like Goodnotes shows under a folder.
+    private var subtitle: String {
+        var parts: [String] = []
+        if let itemCount { parts.append(itemCount == 1 ? "1 item" : "\(itemCount) items") }
+        if let size { parts.append(StorageSize.format(size)) }
+        return parts.isEmpty ? " " : parts.joined(separator: " · ")
+    }
+
+    /// Notebooks and folders directly inside (hidden files like `.folder.json` do not count).
+    nonisolated static func countItems(in url: URL) -> Int {
+        let children = (try? FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+        return children.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }.count
     }
 }
 

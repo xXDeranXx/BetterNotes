@@ -213,7 +213,7 @@ struct WindowSaveAndRegistryTests {
         let windowOne = WindowSession(registry: registry), windowTwo = WindowSession(registry: registry)
         try windowOne.open(package)
 
-        #expect(throws: NotebookError.alreadyOpen) { try windowTwo.open(package) }
+        #expect(throws: NotebookError.openInOtherWindow) { try windowTwo.open(package) }  // window one comes forward (M9)
         #expect(windowTwo.notebook == nil)
     }
 

@@ -38,6 +38,10 @@ struct PageActions {
     /// A page dragged onto another page in the grid. If the dragged page is part of the
     /// selection, the whole selection moves with it.
     func drop(_ draggedID: UUID, selection: Set<UUID>, onto target: UUID) {
+        guard notebook.pages.contains(where: { $0.id == draggedID }) else {
+            copyFromOtherWindow(draggedID, before: target)
+            return
+        }
         let moving = selection.contains(draggedID) ? selection : [draggedID]
         guard let index = PageReorder.destination(order: notebook.pages.map(\.id), moving: moving, onto: target)
         else { return }
@@ -59,6 +63,22 @@ struct PageActions {
             } catch {
                 report(error.localizedDescription)
             }
+        }
+    }
+
+    /// A page dragged over from another window's notebook (M9): a copy goes in before `target`,
+    /// ink, images and text included, as one undo step here. The other notebook is only read;
+    /// to move the page, delete it there.
+    func copyFromOtherWindow(_ pageID: UUID, before target: UUID) {
+        guard let source = WindowDirectory.notebook(containingPage: pageID), source !== notebook else { return }
+        attempt {
+            let entries = try source.copyEntries([pageID])
+            // Images first: meta.json must never name a file the notebook does not have.
+            try notebook.package.copyObjectFiles(
+                Set(entries.flatMap(\.meta.objects).compactMap(\.imageFile)), from: source.package)
+            let index = notebook.pages.firstIndex { $0.id == target } ?? notebook.pages.count
+            let ids = try notebook.insertPages(entries, at: index, actionName: "Copy Page")
+            if let first = ids.first { navigator.goTo(first) }
         }
     }
 

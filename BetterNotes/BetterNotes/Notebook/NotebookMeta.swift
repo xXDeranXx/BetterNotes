@@ -133,6 +133,8 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
     case cannotGenerateTemplate(PageTemplate)
     case pdfCreationFailed
     case alreadyOpen
+    /// The notebook is open in another window, which was brought forward instead.
+    case openInOtherWindow
     case pdfUnreadable
     case pdfPasswordProtected
     case pdfHasNoPages
@@ -152,6 +154,8 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
             "The page template PDF could not be created."
         case .alreadyOpen:
             "This notebook is already open in another window. Close it there first."
+        case .openInOtherWindow:
+            "This notebook is open in another window, which is now shown."
         case .pdfUnreadable:
             "This file could not be read as a PDF. It may be damaged or not a PDF."
         case .pdfPasswordProtected:

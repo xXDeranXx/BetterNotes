@@ -26,6 +26,8 @@ struct RootView: View {
         }
         .debugOverlay()  // temporary, see Debug/
         .environment(session)
+        // Lets other windows bring this one forward (see `WindowDirectory`).
+        .background(SceneReader { session.scene = $0 })
         .task {
             guard !didRestore else { return }
             didRestore = true
@@ -70,7 +72,16 @@ struct RootView: View {
         // Like a route change in a React app: the system hands the window a URL and the
         // window decides what to show.
         .onOpenURL { url in
-            Task { await session.importPDFs([url]) }
+            // A notebook of the library (for example tapped in the Files app) opens in a tab, or
+            // brings forward the window that has it; anything else is imported as a PDF.
+            if url.pathExtension == NotebookPackage.fileExtension,
+                url.standardizedFileURL.path.hasPrefix(LibraryLocation.documents.root.standardizedFileURL.path + "/")
+            {
+                do { try session.open(NotebookPackage(url: url)) } catch NotebookError.openInOtherWindow {
+                } catch { session.importError = error.localizedDescription }
+            } else {
+                Task { await session.importPDFs([url]) }
+            }
         }
         .alert(
             "Could not import", isPresented: Binding(
