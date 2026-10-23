@@ -104,6 +104,22 @@ Decided:
   - **Panel**: tap folds it to one line; drag moves it to another corner (remembered).
   - Checked in the simulator with screenshots. 415 unit tests pass.
 - **Debug overlay confirmed on the iPad (2026-10-23):** it works. **First CPU readings while writing:** at most about 110 % during normal writing (lifting between words), and up to about 140 % for one long stroke without lifting. Our own per-touch work in `HoldToSnapGesture` is constant per point (it appends the point and checks the distance to the rest point), so the rise with a long stroke most likely comes from PencilKit redrawing the growing live stroke. Not checked yet: the same strokes with "Hold to snap" and "Hold to smooth" off (our share), and at zoom 1 vs. zoomed (`k`). **Heat is still not measured**: it needs a longer recording (20+ minutes of writing).
+- **Tabs, plan and second round of decisions (2026-10-23, before building):**
+  - **Strip**: the tab strip shows **whenever a tab is open**, above the editor's top bar, in both the library and the editor. Each tab has an **×** that closes it (saving first; a failed save keeps the tab), with no confirmation. A long press offers **Close Other Tabs**. Tabs can be **reordered by dragging**. A new tab goes at the end.
+  - **Navigation**: the editor's back chevron becomes **Home**: it shows the library and the tabs stay.
+  - **Loaded tabs**: the active tab plus the 2 most recent keep their model; a 4th releases the oldest.
+  - **Shared and per-tab state**: the `ToolController` moves from `EditorView` into the window session, so the active tool stays the same across tabs. Scroll position (page id + point on the page) and zoom are stored per tab.
+  - **Restore on launch** (changes "not now"): each window keeps its tabs in `@SceneStorage` and gets them back, all released, when iPadOS restores the window. A notebook that is missing or already claimed is left out with a short note.
+  - **Library actions on a background tab** (rename, move, trash, export, move or copy pages into it) are **allowed**. The app saves the tab, drops its model (its undo history goes), does the action, and the tab follows the new URL; trashing closes the tab. Only the active tab of a window stays locked, as today.
+  - **Other windows**: a notebook open in another window still gets the message "open in another window" until M9 brings that window forward.
+  - **Steps**, one commit each:
+    1. Registry with owners (URL -> window id, tab id).
+    2. Tabs in `WindowSession`, with unit tests and no views.
+    3. UI: strip, Home, switching, scroll and zoom restore, reorder, Close Other Tabs.
+    4. Library actions on background tabs.
+    5. Restore on launch.
+    6. A UI test (two notebooks, write, switch, undo in the background tab, force-quit, reopen).
+  - **On the iPad**, with the debug overlay: memory with 1, 3, 5 and 10 tabs, switch speed, CPU near 0 for background tabs; this sets the number of loaded tabs.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones
