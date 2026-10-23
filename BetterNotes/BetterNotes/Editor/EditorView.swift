@@ -12,9 +12,12 @@ struct NotebookEditor: UIViewControllerRepresentable {
     var onObjectError: (String) -> Void = { _ in }
     var isToolPickerHidden = false
     var topInset: CGFloat = 0
+    /// Where the tab was last time (tabs); the editor goes back there once laid out.
+    var position: TabPosition?
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
         let controller = NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
+        controller.pendingPosition = position
         controller.tools = tools
         controller.onObjectError = onObjectError
         bridge.controller = controller
@@ -37,6 +40,9 @@ struct EditorView: View {
     @Environment(WindowSession.self) private var session
     @Environment(\.scenePhase) private var scenePhase
     let notebook: Notebook
+    /// This editor's own tab: its scroll position is written here, never to
+    /// `session.activeTab`, which already points at the next tab while this editor goes away.
+    let tab: NotebookTab?
     @State private var search = DocumentSearch()
     @State private var isSearching = false
     @State private var thumbnails: ThumbnailStore
@@ -46,7 +52,8 @@ struct EditorView: View {
     @State private var isShowingGrid = false
     @State private var insertKind: InsertKind?
     @State private var isExporting = false
-    @State private var tools = ToolController()
+    /// The window's tools, shared by all tabs.
+    private var tools: ToolController { session.tools }
     @State private var bridge = EditorBridge()
     @State private var imageSource: ImageSource?
     @State private var objectError: String?
@@ -55,8 +62,9 @@ struct EditorView: View {
     /// Size of the editor area, so the toolbar can fit its buttons into it.
     @State private var editorSize: CGSize = .zero
 
-    init(notebook: Notebook) {
+    init(notebook: Notebook, tab: NotebookTab? = nil) {
         self.notebook = notebook
+        self.tab = tab
         _thumbnails = State(initialValue: ThumbnailStore(notebook: notebook))
         _navigator = State(initialValue: PageNavigator(notebook: notebook))
     }
@@ -90,7 +98,8 @@ struct EditorView: View {
                     onObjectError: { objectError = $0 },
                     // The system tool palette floats above full-screen covers (grid, camera).
                     isToolPickerHidden: isShowingGrid || insertKind == .scan,
-                    topInset: tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight : 0)
+                    topInset: tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight : 0,
+                    position: tab?.position)
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { editorSize = $0 }
                     // On this inner view, so its pickers do not fight with the page insertion's.
                     .objectImageInsertion(source: $imageSource, bridge: bridge) { objectError = $0 }
@@ -117,10 +126,21 @@ struct EditorView: View {
                         }
                     }
                 }
+                .onAppear {
+                    // The session calls this before this tab stops being shown (another tab,
+                    // the library, closing), while this editor and its controller still exist.
+                    // Captures this editor's own bridge, tab and tools, never "the active tab".
+                    session.beforeLeavingTab = { [bridge, tab, tools] in
+                        bridge.controller?.finishTextEditing()
+                        tools.endTemporaryObjectSelection()
+                        if let position = bridge.controller?.currentPosition() { tab?.position = position }
+                    }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     // Leaving the foreground (home, app switcher, locking): save right away.
                     if phase != .active {
                         bridge.controller?.finishTextEditing()
+                        rememberPosition()  // for restoring the tabs after a relaunch
                         BackgroundSave.flush(notebook)
                     }
                 }
@@ -159,9 +179,10 @@ struct EditorView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarLeading) {
-                        Button("Library", systemImage: "chevron.backward") {
-                            bridge.controller?.finishTextEditing()  // typed text goes into the closing save
-                            Task { await session.closeAnimated() }
+                        // Home: the library, the tabs stay open (typing is finished by
+                        // `beforeLeavingTab`, see `onAppear`).
+                        Button("Library", systemImage: "house") {
+                            Task { await session.showLibraryAnimated() }
                         }
                         Button("Pages", systemImage: "sidebar.left") {
                             withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
@@ -193,6 +214,12 @@ struct EditorView: View {
                     }
                 }
         }
+    }
+}
+
+extension EditorView {
+    private func rememberPosition() {
+        if let position = bridge.controller?.currentPosition() { tab?.position = position }
     }
 }
 

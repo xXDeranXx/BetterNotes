@@ -11,7 +11,7 @@ nonisolated enum LibraryError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .isOpen:
-            "This notebook (or a notebook in this folder) is open in a window. Close it there first."
+            "This notebook (or a notebook in this folder) is open in a tab. Close its tab first."
         case .outsideLibrary:
             "This item is not inside the library."
         case .moveIntoItself:

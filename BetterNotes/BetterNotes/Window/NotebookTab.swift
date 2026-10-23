@@ -3,7 +3,8 @@ import Foundation
 import Observation
 
 /// Where a tab was scrolled to, so coming back shows the same spot: a page by id (never by
-/// number, see "Rules learned"), a point on that page in page coordinates, and the zoom.
+/// number, see "Rules learned"), the point of that page at the top left of the visible area
+/// (below the toolbar), in PDFKit's page coordinates (as `PDFDestination` wants them), and the zoom.
 nonisolated struct TabPosition: Codable, Equatable, Sendable {
     var pageID: UUID
     var point: CGPoint

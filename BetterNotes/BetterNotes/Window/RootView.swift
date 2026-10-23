@@ -8,35 +8,23 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        // While a notebook opens or closes, the library stays underneath and the editor fades
-        // in or out on top of it (see `WindowSession.openAnimated`); otherwise it is one or the other.
-        ZStack {
-            if session.notebook == nil || session.isOpening || session.isClosing {
-                LibraryView()
+        // The tab strip sits on top while any notebook is open; below it the library or the editor.
+        VStack(spacing: 0) {
+            if !session.tabs.isEmpty {
+                TabStrip()
             }
-            if let notebook = session.notebook {
-                // Opening fades the editor in and closing fades it out, both with a slight
-                // grow or shrink; the library shows through in between.
-                let shown = session.isOpening ? session.openRevealed : !session.closeFaded
-                EditorView(notebook: notebook)
-                    // A new editor (with fresh @State) for each tab; without the id SwiftUI
-                    // would keep the old one and only hand it the other notebook.
-                    .id(session.activeTabID)
-                    .opacity(shown ? 1 : 0)
-                    .scaleEffect(shown ? 1 : 0.94)
-                    .allowsHitTesting(!session.isOpening && !session.isClosing)
-            }
+            content
         }
         .debugOverlay()  // temporary, see Debug/
         .environment(session)
-        // "Open in BetterNotes" from the share sheet or the Files app arrives here as a URL.
-        // Like a route change in a React app: the system hands the window a URL and the
-        // window decides what to show.
         // The editor saves the shown notebook; background tabs that still hold a model are
         // saved here (a second save of the shown one finds nothing to do).
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { session.saveAllInBackground() }
         }
+        // "Open in BetterNotes" from the share sheet or the Files app arrives here as a URL.
+        // Like a route change in a React app: the system hands the window a URL and the
+        // window decides what to show.
         .onOpenURL { url in
             Task { await session.importPDFs([url]) }
         }
@@ -47,6 +35,28 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(session.importError ?? "")
+        }
+    }
+
+    /// While a notebook opens or goes home, the library stays underneath and the editor fades
+    /// in or out on top of it (see `WindowSession.openAnimated`); otherwise it is one or the other.
+    private var content: some View {
+        ZStack {
+            if session.notebook == nil || session.isOpening || session.isClosing {
+                LibraryView()
+            }
+            if let notebook = session.notebook {
+                // Opening fades the editor in and going home fades it out, both with a slight
+                // grow or shrink; the library shows through in between.
+                let shown = session.isOpening ? session.openRevealed : !session.closeFaded
+                EditorView(notebook: notebook, tab: session.activeTab)
+                    // A new editor (with fresh @State) for each tab; without the id SwiftUI
+                    // would keep the old one and only hand it the other notebook.
+                    .id(session.activeTabID)
+                    .opacity(shown ? 1 : 0)
+                    .scaleEffect(shown ? 1 : 0.94)
+                    .allowsHitTesting(!session.isOpening && !session.isClosing)
+            }
         }
     }
 }

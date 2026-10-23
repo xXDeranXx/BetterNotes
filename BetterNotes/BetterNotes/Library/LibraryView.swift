@@ -556,7 +556,7 @@ struct LibraryView: View {
             return
         }
         guard !OpenNotebookRegistry.shared.isOpen(at: notebook.url) else {
-            model.errorMessage = "\"\(notebook.title)\" is open in a window. Export it from there, or close it first."
+            model.errorMessage = "\"\(notebook.title)\" is open in a tab. Export it from there, or close its tab first."
             return
         }
         do {

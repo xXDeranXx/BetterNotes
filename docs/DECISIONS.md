@@ -129,6 +129,15 @@ Decided:
   - **Editor**: `EditorView` gets `.id(activeTabID)`, so each tab builds a fresh editor.
   - **Temporary**: `closeAnimated` keeps the back button closing the tab until the strip exists (step 3).
   - 434 unit tests and all UI tests pass.
+- **Tabs, step 3: UI (built 2026-10-23; iPad check pending):**
+  - **Strip**: `TabStrip` (in `RootView` above the library and the editor whenever a tab exists) is a horizontal `ScrollView` + `HStack` of chips. Each chip has a title (at most 200 pt wide) and an × (30 pt tap area). The active tab is white with an accent border. Holding a chip shows **Close Other Tabs**. Reordering uses `onDrag` + a `DropDelegate` that moves the tab live under the finger and accepts only drags started in this strip.
+  - **Selecting**: tapping a tab from the library uses `selectAnimated` (the usual fade); between tabs it switches at once.
+  - **Home**: the editor's back button is a house ("Library") that calls `showLibraryAnimated`; the tab stays open. The temporary `closeAnimated` is gone.
+  - **Leave hook**: `WindowSession.beforeLeavingTab` is set by the shown `EditorView` and called before any change of the shown tab (another tab, Home, closing it), while the editor still exists. It finishes typing, ends a temporary object selection, and writes the scroll position into the editor's **own** `NotebookTab` (captured, not `session.activeTab`).
+  - **Position**: the editor also stores its position when the app leaves the foreground. `NotebookEditorViewController.currentPosition()` takes the page and point at the top left of the visible area (below the toolbar) plus the zoom. `pendingPosition` is applied once after the first layout: zoom first, then `PDFDestination`, then moved by the toolbar inset. A deleted page means staying at the top.
+  - **Tools**: `ToolController` now lives in `WindowSession` (shared by the tabs).
+  - **Messages**: the library says "open in a tab" instead of "open in a window".
+  - Checked in the simulator with screenshots (one tab, library with the strip, two tabs, switching, closing). 434 unit tests and all UI tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

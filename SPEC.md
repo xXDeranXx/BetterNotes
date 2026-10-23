@@ -200,7 +200,8 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 - Autosave about 2 s after a change, when a canvas leaves the screen, on going to the background and on close; per-page revision counters so a change during a save stays unsaved; a failed save shows Retry and blocks closing. An unreadable drawing is kept as `<id>.drawing.unreadable`.
 - `document.pdf` and `meta.json` change together through `pending/` + a `COMMIT` marker (`NotebookPackage.commitStructure`, finished or discarded on open). While a page change is unsaved, `meta.json` is never written alone. Object changes rewrite only `meta.json`.
 - A format change bumps `formatVersion` (now 3) and keeps the old file once as `meta.v<N>.json`; an app refuses newer versions. New fields are optional with defaults. Image files in `objects/` are written before the `meta.json` that names them and are never deleted.
-- One window per notebook (`OpenNotebookRegistry`); nothing open in a window can be moved, renamed or trashed. Drawings of off-screen, saved pages are evicted from memory.
+- One window per notebook (`OpenNotebookRegistry`); nothing open in a window can be moved, renamed or trashed.
+- Tabs: `WindowSession.notebook` is the active tab's model; a tab is released only after a successful save; `EditorView` is keyed by tab id and writes to its own `NotebookTab` (never `session.activeTab`); finish typing (`finishTextEditing`) before every tab switch or close. Drawings of off-screen, saved pages are evicted from memory.
 - Library: `.library.json` keys favorites and recents by notebook **id**; a folder's look lives in `.folder.json` inside it; trash items keep `origin.json` for Put Back and are purged after 30 days; name clashes get "Name (2)".
 
 **Objects (images, text boxes)**

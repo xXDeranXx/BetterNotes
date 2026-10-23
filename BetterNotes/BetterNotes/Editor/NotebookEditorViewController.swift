@@ -172,6 +172,10 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             pdfView.minScaleFactor = pdfView.scaleFactorForSizeToFit * 0.5
             lastFitScale = pdfView.scaleFactorForSizeToFit
             coordinator.zoomDidChange(to: pdfView.scaleFactor)
+            // PDFView and the toolbar inset settle a moment later; then go back to the old spot.
+            if pendingPosition != nil {
+                DispatchQueue.main.async { [weak self] in self?.restorePendingPosition() }
+            }
         }
     }
 
@@ -319,6 +323,37 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     /// Tells the editor screen that an image could not be inserted.
     var onObjectError: ((String) -> Void)?
+
+    // MARK: Position (tabs)
+
+    /// Where the tab was when it was last shown; applied once, after the first layout.
+    var pendingPosition: TabPosition?
+
+    /// The page at the top left of the visible area (below the toolbar), that point on it and
+    /// the zoom, so coming back to the tab shows the same spot.
+    func currentPosition() -> TabPosition? {
+        guard didSetZoomLimits else { return pendingPosition }  // not laid out yet: keep the old one
+        let topLeft = CGPoint(x: pdfView.bounds.minX, y: pdfView.bounds.minY + topInset)
+        guard let page = pdfView.page(for: topLeft, nearest: true), let id = notebook.pageID(for: page) else { return nil }
+        return TabPosition(pageID: id, point: pdfView.convert(topLeft, to: page), zoom: pdfView.scaleFactor)
+    }
+
+    private func restorePendingPosition() {
+        guard let position = pendingPosition else { return }
+        pendingPosition = nil
+        guard let index = notebook.pages.firstIndex(where: { $0.id == position.pageID }),
+            let page = notebook.document?.page(at: index)
+        else { return }  // the page was deleted meanwhile: stay at the top
+        if abs(position.zoom - pdfView.scaleFactor) > 0.001 {
+            pdfView.scaleFactor = min(max(position.zoom, pdfView.minScaleFactor), pdfView.maxScaleFactor)
+        }
+        // The destination's point ends up at the top of the view, which is under the toolbar.
+        pdfView.go(to: PDFDestination(page: page, at: position.point))
+        if let scrollView = pdfScrollView, topInset > 0 {
+            scrollView.contentOffset.y = max(scrollView.contentOffset.y - topInset, -scrollView.adjustedContentInset.top)
+        }
+        coordinator.zoomDidChange(to: pdfView.scaleFactor)
+    }
 
     /// The page in the middle of the visible area (below the toolbar) and that point on it,
     /// in page coordinates. New images go there.

@@ -27,6 +27,12 @@ final class WindowSession {
 
     /// This window's id in the registry.
     @ObservationIgnored let windowID = UUID()
+    /// The pens and tools, shared by all tabs of the window, so switching keeps the tool.
+    @ObservationIgnored let tools = ToolController()
+    /// Set by the shown editor: puts typed text into the model and stores the scroll position
+    /// in the editor's own tab. Called before the shown tab changes in any way (another tab,
+    /// the library, closing), while the editor still exists.
+    @ObservationIgnored var beforeLeavingTab: (() -> Void)?
     @ObservationIgnored private let registry: OpenNotebookRegistry
     @ObservationIgnored private var useCounter = 0
     /// The saves that release old tabs run one after another; tests wait for this.
@@ -87,7 +93,7 @@ final class WindowSession {
 
     /// Home: the library, with all tabs kept.
     func showLibrary() {
-        deactivateCurrent()
+        leaveCurrent()
         activeTabID = nil
     }
 
@@ -97,6 +103,7 @@ final class WindowSession {
     @discardableResult
     func closeTab(_ id: UUID) async -> Bool {
         guard let tab = tabs.first(where: { $0.id == id }) else { return true }
+        if id == activeTabID { beforeLeavingTab?() }  // typed text goes into the closing save
         if let notebook = tab.notebook {
             await notebook.saveChanges()
             guard !notebook.hasUnsavedChanges else { return false }
@@ -139,7 +146,7 @@ final class WindowSession {
     }
 
     private func activate(_ tab: NotebookTab) {
-        if tab.id != activeTabID { deactivateCurrent() }
+        if tab.id != activeTabID { leaveCurrent() }
         useCounter += 1
         tab.lastUsed = useCounter
         activeTabID = tab.id
@@ -148,8 +155,9 @@ final class WindowSession {
 
     /// The tab that goes to the background is saved right away instead of after the usual
     /// autosave delay, so a later release or the app leaving finds it on disk.
-    private func deactivateCurrent() {
+    private func leaveCurrent() {
         guard let notebook = activeTab?.notebook else { return }
+        beforeLeavingTab?()
         Task { await notebook.saveChanges() }
     }
 
@@ -236,16 +244,6 @@ final class WindowSession {
         showLibrary()
         isClosing = false
         closeFaded = false
-    }
-
-    /// Until the tab strip exists (tabs step 3) the back button closes the tab: saving first,
-    /// then the library shows through. If saving fails the notebook stays open.
-    func closeAnimated() async {
-        guard let id = activeTabID, let notebook else { return }
-        await notebook.saveChanges()
-        guard !notebook.hasUnsavedChanges else { return }
-        await showLibraryAnimated()
-        await closeTab(id)
     }
 
     // MARK: Importing
