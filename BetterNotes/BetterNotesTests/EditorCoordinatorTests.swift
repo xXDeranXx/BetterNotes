@@ -110,10 +110,13 @@ struct EditorCoordinatorTests {
         #expect(overlay.retiredCanvas === before && !before.isUserInteractionEnabled && before.delegate == nil)
         let subviews = overlay.subviews
         #expect(subviews.firstIndex(of: before)! > subviews.firstIndex(of: after)!)
+        // The new one waits almost invisible, so translucent ink is not shown twice (darker).
+        #expect(abs(after.alpha - PageOverlayView.waitingAlpha) < 0.001)
         setup.coordinator.canvasViewDidFinishRendering(after)
         #expect(before.superview === overlay)  // a short grace period: "rendered" is not yet "on screen"
         try await Task.sleep(for: .seconds(EditorCoordinator.retireGracePeriod + 0.2))
         #expect(before.superview == nil && overlay.retiredCanvas == nil)
+        #expect(after.alpha == 1)
         #expect(after.delegate === setup.coordinator)
         #expect((after.tool as? PKInkingTool)?.inkType == .fountainPen)
         #expect(after.isRulerActive)
@@ -149,6 +152,8 @@ struct EditorCoordinatorTests {
 
         #expect(first.superview == nil)
         #expect(overlay.subviews.filter { $0 is PageCanvasView }.count == 2)  // the new one and one old
+        #expect(first.alpha == 1 || first.superview == nil)
+        #expect(overlay.subviews.compactMap { $0 as? PageCanvasView }.filter { $0.alpha == 1 }.count == 1)  // only the old one shows
     }
 
     @Test func aCanvasThatAppearsLaterShowsChangesMadeWhileItWasOffScreen() throws {

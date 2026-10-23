@@ -182,6 +182,7 @@ struct ColorChooser: View {
     @Binding var hex: String
     @State private var hexText = ""
     @State private var hexIsInvalid = false
+    @State private var isEnteringHex = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -210,19 +211,27 @@ struct ColorChooser: View {
                     set: { hex = HexColor.hex(of: UIColor($0)) }),
                     supportsOpacity: false)
                     .labelsHidden()
-                TextField("#RRGGBB", text: $hexText)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .font(.body.monospaced())
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.red, lineWidth: hexIsInvalid ? 1.5 : 0))
-                    .onSubmit(applyHex)
-                    .onChange(of: hexText) { _, _ in hexIsInvalid = false }
-                Button("Set", action: applyHex)
+                // No text field in the popover itself: with the Pencil near it, Scribble turned
+                // taps and strokes into typed text and the colors could not be changed (iPad).
+                Button {
+                    hexText = hex
+                    isEnteringHex = true
+                } label: {
+                    Label(hex, systemImage: "number").font(.body.monospaced())
+                }
+                .accessibilityLabel("Enter hex color")
+                Spacer()
             }
         }
-        .onAppear { hexText = hex }
-        .onChange(of: hex) { _, newHex in hexText = newHex }
+        .alert("Hex Color", isPresented: $isEnteringHex) {
+            TextField("#RRGGBB", text: $hexText)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+            Button("Set", action: applyHex)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(hexIsInvalid ? "That is not a color. Use six hex digits, for example #1E5BFF." : "Six hex digits, for example #1E5BFF.")
+        }
     }
 
     private func swatch(_ color: String) -> some View {
@@ -249,9 +258,11 @@ struct ColorChooser: View {
     private func applyHex() {
         if let normalized = HexColor.normalized(hexText) {
             hex = normalized
-            hexText = normalized
+            hexIsInvalid = false
         } else {
             hexIsInvalid = true
+            // Show the dialog again with the hint (an alert closes after any button).
+            DispatchQueue.main.async { isEnteringHex = true }
         }
     }
 }

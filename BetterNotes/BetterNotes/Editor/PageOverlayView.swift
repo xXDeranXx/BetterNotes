@@ -98,6 +98,11 @@ final class PageOverlayView: UIView {
         old.delegate = nil
         old.isUserInteractionEnabled = false
         insertSubview(new, belowSubview: old)
+        // Translucent ink (shape fills, the highlighter) would show twice, darker, while the two
+        // canvases overlap (seen on the iPad as filled shapes flickering after every new shape).
+        // So the new canvas waits almost invisible; it still renders its ink, and is shown fully
+        // in the same moment the old one goes.
+        new.alpha = Self.waitingAlpha
         retiredCanvas = old
         canvas = new
         setNeedsLayout()
@@ -113,9 +118,16 @@ final class PageOverlayView: UIView {
     /// The canvas that was replaced and still covers the new one (see `replaceCanvas`).
     private(set) var retiredCanvas: PageCanvasView?
     static let retireTimeout: TimeInterval = 0.6
+    /// Low enough that double translucent ink does not show, above zero so the canvas is still drawn.
+    static let waitingAlpha: CGFloat = 0.01
 
     func retireOldCanvas() {
+        // One transaction without animation: the new canvas appears exactly when the old one goes.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        canvas.alpha = 1
         retiredCanvas?.removeFromSuperview()
+        CATransaction.commit()
         retiredCanvas = nil
         if clearsPreviewOnRetire { clearShapePreview() }
     }
