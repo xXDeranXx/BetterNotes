@@ -236,6 +236,21 @@ final class LibraryModel {
         }
     }
 
+    /// A new notebook in the folder on screen from scanned pages, titled "Scan <date>".
+    func createNotebookFromScan(_ jpegs: [Data]) async -> NotebookPackage? {
+        let parent = folder, title = ScanPages.notebookTitle()
+        do {
+            let package = try await Task.detached {
+                try NotebookPackage.importScan(jpegs: jpegs, in: parent, title: title, coverColor: PDFImporter.coverColor)
+            }.value
+            await reload()
+            return package
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func rename(_ url: URL, to name: String) async {
         let operations = operations
         await perform { try operations.rename(url, to: name) }

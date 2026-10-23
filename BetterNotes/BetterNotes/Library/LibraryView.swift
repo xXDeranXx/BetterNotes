@@ -24,6 +24,7 @@ struct LibraryView: View {
     @State private var exportNotebook: Notebook?
     @State private var backupRequest: BackupRequest?
     @State private var isPickingImportFolder = false
+    @State private var isScanning = false
     @State private var infoMessage: String?
     @State private var isReminderDismissed = false
 
@@ -96,6 +97,15 @@ struct LibraryView: View {
         } message: {
             Text(infoMessage ?? "")
         }
+        .documentScanner(
+            isPresented: $isScanning,
+            scanned: { jpegs in
+                Task {
+                    guard let package = await model.createNotebookFromScan(jpegs) else { return }
+                    open(NotebookSummary.placeholder(for: package))
+                }
+            },
+            failed: { model.errorMessage = $0 })
         .sheet(isPresented: $isCreatingNotebook) {
             NewNotebookSheet(
                 create: { title, template, size, color in
@@ -422,6 +432,13 @@ struct LibraryView: View {
                     }
                     Button("Import PDF", systemImage: "square.and.arrow.down") { isPickingPDF = true }
                     Button("Import Folder…", systemImage: "folder.badge.gearshape") { isPickingImportFolder = true }
+                    Button("Scan Document…", systemImage: "doc.viewfinder") {
+                        if DocumentScanner.isAvailable {
+                            isScanning = true
+                        } else {
+                            model.errorMessage = DocumentScanner.unavailableMessage
+                        }
+                    }
                     Divider()
                     Button("Back Up Library…", systemImage: "externaldrive") {
                         backupRequest = BackupRequest(source: model.location.root, title: "Back Up Library", isWholeLibrary: true)

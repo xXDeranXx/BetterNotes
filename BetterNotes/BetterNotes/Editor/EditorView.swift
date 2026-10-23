@@ -74,7 +74,8 @@ struct EditorView: View {
                 }
                 NotebookEditor(
                     notebook: notebook, search: search, navigator: navigator, tools: tools,
-                    isToolPickerHidden: isShowingGrid)
+                    // The system tool palette floats above full-screen covers (grid, camera).
+                    isToolPickerHidden: isShowingGrid || insertKind == .scan)
                     .overlay(alignment: toolbarAlignment) {
                         if !tools.settings.usesSystemToolPicker { PenToolbar(tools: tools) }
                     }

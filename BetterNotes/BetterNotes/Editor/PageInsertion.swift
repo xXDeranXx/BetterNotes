@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// What the user wants to insert as new pages.
 enum InsertKind {
-    case pdf, photo, image
+    case pdf, photo, image, scan
 }
 
 extension PageActions {
@@ -51,6 +51,18 @@ extension PageActions {
     func insertImageFiles(_ urls: [URL], at index: Int, reveal: Bool) {
         attempt { insertImages(try urls.map(readFile), at: index, reveal: reveal) }
     }
+
+    /// Scanned pages (JPEGs from `ScanPages.jpegData`), all in one undo step.
+    func insertScan(_ jpegs: [Data], at index: Int, reveal: Bool) {
+        attempt {
+            guard let document = PDFDocument(data: try ScanPages.pdfData(fromJPEGs: jpegs)) else {
+                throw NotebookError.pdfCreationFailed
+            }
+            let ids = try notebook.insertPages(
+                try Notebook.makeEntries(from: document), at: index, actionName: "Insert Scanned Pages")
+            if reveal, let first = ids.first { navigator.goTo(first) }
+        }
+    }
 }
 
 /// The menu entries that start an insertion; the pickers themselves are in `pageInsertion`.
@@ -61,6 +73,7 @@ struct InsertMenuItems: View {
         Button("PDF from Files…", systemImage: "doc.badge.plus") { kind = .pdf }
         Button("Photo…", systemImage: "photo") { kind = .photo }
         Button("Image from Files…", systemImage: "folder") { kind = .image }
+        Button("Scan Document…", systemImage: "doc.viewfinder") { kind = .scan }
     }
 }
 
@@ -87,7 +100,18 @@ private struct PageInsertionModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: kind) { _, new in if let new { activeKind = new } }
+            .onChange(of: kind) { _, new in
+                if let new { activeKind = new }
+                if new == .scan && !DocumentScanner.isAvailable {
+                    kind = nil
+                    actions.report(DocumentScanner.unavailableMessage)
+                }
+            }
+            .documentScanner(
+                isPresented: Binding(
+                    get: { kind == .scan && DocumentScanner.isAvailable }, set: { if !$0 { kind = nil } }),
+                scanned: { jpegs in actions.insertScan(jpegs, at: insertionIndex(), reveal: reveal) },
+                failed: { actions.report($0) })
             // One file importer for both PDFs and images: two on the same view fight
             // over which one is shown.
             .fileImporter(

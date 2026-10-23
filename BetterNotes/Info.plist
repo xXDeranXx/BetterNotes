@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Shown when the document scanner asks for the camera the first time. -->
+	<key>NSCameraUsageDescription</key>
+	<string>The camera is used to scan paper documents into notebooks.</string>
+
 	<!-- Show the app's Documents folder in the Files app. -->
 	<key>UIFileSharingEnabled</key>
 	<true/>
