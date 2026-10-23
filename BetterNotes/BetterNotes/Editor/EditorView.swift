@@ -9,6 +9,7 @@ struct NotebookEditor: UIViewControllerRepresentable {
     let navigator: PageNavigator
     let tools: ToolController
     var isToolPickerHidden = false
+    var topInset: CGFloat = 0
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
         let controller = NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
@@ -22,6 +23,7 @@ struct NotebookEditor: UIViewControllerRepresentable {
     // SwiftUI calls this whenever a value above changes: the way to push state into UIKit.
     func updateUIViewController(_ controller: NotebookEditorViewController, context: Context) {
         controller.setToolPickerHidden(isToolPickerHidden)
+        controller.topInset = topInset
         controller.applyTools(tools.settings, isRulerActive: tools.isRulerActive)
     }
 }
@@ -41,6 +43,8 @@ struct EditorView: View {
     @State private var insertKind: InsertKind?
     @State private var isExporting = false
     @State private var tools = ToolController()
+    /// Height of the pen toolbar (measured), so the first page starts below it.
+    @State private var toolbarHeight: CGFloat = 0
 
     init(notebook: Notebook) {
         self.notebook = notebook
@@ -75,9 +79,13 @@ struct EditorView: View {
                 NotebookEditor(
                     notebook: notebook, search: search, navigator: navigator, tools: tools,
                     // The system tool palette floats above full-screen covers (grid, camera).
-                    isToolPickerHidden: isShowingGrid || insertKind == .scan)
+                    isToolPickerHidden: isShowingGrid || insertKind == .scan,
+                    topInset: tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight : 0)
                     .overlay(alignment: toolbarAlignment) {
-                        if !tools.settings.usesSystemToolPicker { PenToolbar(tools: tools) }
+                        if !tools.settings.usesSystemToolPicker {
+                            PenToolbar(tools: tools)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toolbarHeight = $0 }
+                        }
                     }
             }
                 .ignoresSafeArea(edges: .bottom)

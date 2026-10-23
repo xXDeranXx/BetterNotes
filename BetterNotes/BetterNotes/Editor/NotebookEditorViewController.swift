@@ -39,6 +39,25 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     /// operation changes the widest page (turning a page sideways), see `refitIfPagesChangedWidth`.
     private var lastFitScale: CGFloat = 0
 
+    /// Room above the first page for the pen toolbar when it floats at the top, so it does not
+    /// cover the top of the page. Pages still scroll up under the toolbar.
+    var topInset: CGFloat = 0 {
+        didSet { if topInset != oldValue { applyTopInset() } }
+    }
+
+    /// PDFView scrolls with a scroll view of its own, its direct subview.
+    private var pdfScrollView: UIScrollView? {
+        pdfView.subviews.lazy.compactMap { $0 as? UIScrollView }.first
+    }
+
+    private func applyTopInset() {
+        guard let scrollView = pdfScrollView, scrollView.contentInset.top != topInset else { return }
+        // At the very top (where a notebook opens), stay at the top so the first page moves down.
+        let wasAtTop = scrollView.contentOffset.y <= -scrollView.adjustedContentInset.top + 1
+        scrollView.contentInset.top = topInset
+        if wasAtTop { scrollView.contentOffset.y = -scrollView.adjustedContentInset.top }
+    }
+
     init(notebook: Notebook, search: DocumentSearch, navigator: PageNavigator) {
         self.notebook = notebook
         self.search = search
@@ -105,6 +124,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        applyTopInset()  // PDFView may reset its scroll view's inset when it lays out
         if !didSetZoomLimits, pdfView.document != nil, pdfView.scaleFactorForSizeToFit > 0 {
             didSetZoomLimits = true
             pdfView.minScaleFactor = pdfView.scaleFactorForSizeToFit * 0.5
