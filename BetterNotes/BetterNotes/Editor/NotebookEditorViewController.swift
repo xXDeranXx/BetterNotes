@@ -61,6 +61,8 @@ struct ScrollSnapshot: Equatable {
 final class NotebookEditorViewController: UIViewController, UIGestureRecognizerDelegate, UIPencilInteractionDelegate {
     private let notebook: Notebook
     private let coordinator: EditorCoordinator
+    /// For tests: which page canvases the editor holds.
+    var coordinatorForTests: EditorCoordinator { coordinator }
     private let pdfView = PDFView()
     /// The whiteboard's overlay; nil for a notebook.
     private var board: PageOverlayView?
@@ -84,9 +86,36 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         didSet { if topInset != oldValue { applyTopInset() } }
     }
 
-    /// PDFView scrolls with a scroll view of its own, its direct subview.
+    /// The `@AppStorage` key of the scroll direction, the same in every window.
+    static let scrollsHorizontallyKey = "scrollsPagesHorizontally"
+
+    /// Pages side by side, one at a time, turned with a finger swipe (an app-wide setting).
+    /// Otherwise one long vertical column. Ignored on a whiteboard.
+    var scrollsHorizontally = false {
+        didSet {
+            guard scrollsHorizontally != isPageByPage, board == nil, pdfView.document != nil else { return }
+            switchDisplayMode()
+        }
+    }
+
+    /// The mode PDFView actually shows (follows `scrollsHorizontally` once the view exists).
+    private var isPageByPage = false
+
+    /// The page on screen in page-by-page mode, by id and by place: after a page operation the
+    /// view goes back to it, or to the page now at its place if it was deleted.
+    private var shownPageID: UUID?
+    private var shownPageIndex = 0
+
+    /// PDFView scrolls with a scroll view of its own: in vertical mode its direct subview, in
+    /// page-by-page mode one per page (the shown page's zooms and scrolls that page).
     private var pdfScrollView: UIScrollView? {
         guard board == nil else { return nil }
+        if isPageByPage {
+            guard let id = shownPageID, let overlay = coordinator.visibleOverlays[id] else { return nil }
+            var ancestor = overlay.superview
+            while let view = ancestor, !(view is UIScrollView) { ancestor = view.superview }
+            return ancestor as? UIScrollView
+        }
         return pdfView.subviews.lazy.compactMap { $0 as? UIScrollView }.first
     }
 
@@ -94,7 +123,8 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     private var contentScrollView: UIScrollView? { board?.canvas ?? pdfScrollView }
 
     private func applyTopInset() {
-        guard let scrollView = pdfScrollView, scrollView.contentInset.top != topInset else { return }
+        // Page by page, PDFKit centers each page itself.
+        guard !isPageByPage, let scrollView = pdfScrollView, scrollView.contentInset.top != topInset else { return }
         // At the very top (where a notebook opens), stay at the top so the first page moves down.
         let wasAtTop = scrollView.contentOffset.y <= -scrollView.adjustedContentInset.top + 1
         scrollView.contentInset.top = topInset
@@ -166,9 +196,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         pdfView.frame = view.bounds
         pdfView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         pdfView.backgroundColor = .systemGray5
-        pdfView.displayMode = .singlePageContinuous  // vertical continuous scrolling
-        pdfView.displayDirection = .vertical
-        pdfView.autoScales = true
+        applyDisplayMode()
         pdfView.maxScaleFactor = 6
         // Without markup mode PDFView's text selection can swallow Pencil input on PDFs with text.
         pdfView.isInMarkupMode = true
@@ -183,6 +211,10 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         // is turned; asking it to lay out again after every page operation covers both.
         notebook.onStructureChange = { [weak self] in
             guard let self else { return }
+            if self.isPageByPage {
+                self.reloadPagesAfterStructureChange()
+                return
+            }
             self.pdfView.layoutDocumentView()
             self.refitIfPagesChangedWidth()
             // PDFView finishes laying out a moment later; look again then.
@@ -198,6 +230,122 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
                 self.coordinator.zoomDidChange(to: self.pdfView.scaleFactor)
             }
         }
+        // Page-by-page: each page opens at its own fit, so the zoom changes with the page.
+        NotificationCenter.default.addObserver(
+            forName: .PDFViewPageChanged, object: pdfView, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pageDidChange() }
+        }
+        pageDidChange()
+    }
+
+    // MARK: Page by page
+
+    /// Sets PDFView's layout for `scrollsHorizontally`. PDFKit's page-by-page mode is a page
+    /// view controller (like a book app): one page at a time, a finger swipe turns it, and every
+    /// page has its own zoom, starting at "whole page visible".
+    private func applyDisplayMode() {
+        isPageByPage = scrollsHorizontally
+        if isPageByPage {
+            pdfView.displayMode = .singlePage
+            pdfView.displayDirection = .horizontal
+            pdfView.usePageViewController(true)
+        } else {
+            if pdfView.isUsingPageViewController { pdfView.usePageViewController(false) }
+            pdfView.displayMode = .singlePageContinuous
+            pdfView.displayDirection = .vertical
+        }
+        pdfView.minScaleFactor = 0.1  // the old mode's limit must not stop the new fit
+        fitAgain()
+    }
+
+    /// Switching `autoScales` off and on again makes PDFView fit the pages again.
+    private func fitAgain() {
+        pdfView.autoScales = false
+        pdfView.autoScales = true
+    }
+
+    /// The smallest zoom: half the fit in the vertical column (to see more pages), the fit
+    /// itself page by page (smaller would only show grey around one page).
+    private func applyZoomLimits() {
+        let fit = pdfView.scaleFactorForSizeToFit
+        guard fit > 0 else { return }
+        pdfView.minScaleFactor = isPageByPage ? fit : fit * 0.5
+        lastFitScale = fit
+    }
+
+    private func pageDidChange() {
+        guard isPageByPage, let page = pdfView.currentPage, let id = notebook.pageID(for: page) else { return }
+        shownPageID = id
+        shownPageIndex = notebook.pages.firstIndex(where: { $0.id == id }) ?? shownPageIndex
+        if didSetZoomLimits { applyZoomLimits() }
+        restrictPageTurnsToFingers()
+        coordinator.zoomDidChange(to: pdfView.scaleFactor)
+    }
+
+    /// The page view controller's swipe would also take the Pencil; the Pencil writes, only
+    /// fingers (and a trackpad) turn pages. Its scroll view is the one that pages.
+    private func restrictPageTurnsToFingers() {
+        var queue: [UIView] = [pdfView]
+        while !queue.isEmpty {
+            let view = queue.removeFirst()
+            if let scrollView = view as? UIScrollView, scrollView.isPagingEnabled {
+                scrollView.panGestureRecognizer.allowedTouchTypes = [UITouch.TouchType.direct, .indirectPointer]
+                    .map { NSNumber(value: $0.rawValue) }
+                return
+            }
+            queue.append(contentsOf: view.subviews)
+        }
+    }
+
+    /// The page on screen now: page by page the shown one, else the one at the top.
+    private var pageOnScreen: UUID? {
+        if isPageByPage { return shownPageID }
+        // PDFView's current page, not the one at the top-left corner: that corner is often in
+        // the gap above a page, which counts as the page before.
+        return pdfView.currentPage.flatMap { notebook.pageID(for: $0) }
+    }
+
+    /// Shows `pageID` (or the first page) from a fresh start of PDFView's layout. Page by page,
+    /// PDFKit keeps showing the page it had even when that page was deleted or moved, and then
+    /// `go(to:)` does nothing (it thinks it is already there); setting the document again is
+    /// the reliable way to refresh. PDFKit does not report the overlays it drops then, so they
+    /// are let go here first (which also saves their pages).
+    private func reloadPages(showing pageID: UUID?, beforeReload: () -> Void = {}) {
+        guard let document = notebook.document else { return }
+        finishTextEditing()
+        coordinator.visibleOverlays.values.forEach(coordinator.overlayDidDisappear)
+        pdfView.document = nil
+        beforeReload()
+        pdfView.document = document
+        let index = pageID.flatMap { id in notebook.pages.firstIndex(where: { $0.id == id }) } ?? 0
+        if let page = document.page(at: index) { pdfView.go(to: page) }
+        pdfView.layoutIfNeeded()
+        if didSetZoomLimits { applyZoomLimits() }
+        if isPageByPage {
+            pageDidChange()
+        } else {
+            coordinator.zoomDidChange(to: pdfView.scaleFactor)
+        }
+    }
+
+    /// After a page operation page by page: back to the page that was shown, or, if it was
+    /// deleted, to the page that took its place (the one after it, or the new last page).
+    private func reloadPagesAfterStructureChange() {
+        let pages = notebook.pages
+        let target = shownPageID.flatMap { id in pages.contains(where: { $0.id == id }) ? id : nil }
+            ?? (pages.isEmpty ? nil : pages[min(shownPageIndex, pages.count - 1)].id)
+        // A new page view controller as well: the old one reuses its view of the first page
+        // and never asks for a canvas for it again.
+        reloadPages(showing: target) {
+            pdfView.usePageViewController(false)
+            pdfView.usePageViewController(true)
+        }
+    }
+
+    /// Vertical <-> page by page, staying on the same page.
+    private func switchDisplayMode() {
+        reloadPages(showing: pageOnScreen) { applyDisplayMode() }
     }
 
     override func viewDidLayoutSubviews() {
@@ -221,13 +369,20 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         applyTopInset()  // PDFView may reset its scroll view's inset when it lays out
         if !didSetZoomLimits, pdfView.document != nil, pdfView.scaleFactorForSizeToFit > 0 {
             didSetZoomLimits = true
-            pdfView.minScaleFactor = pdfView.scaleFactorForSizeToFit * 0.5
-            lastFitScale = pdfView.scaleFactorForSizeToFit
+            // Page by page, PDFKit fitted the page to the size the view had before it was
+            // laid out, and does not fit again by itself.
+            if isPageByPage { fitAgain() }
+            applyZoomLimits()
             coordinator.zoomDidChange(to: pdfView.scaleFactor)
             // PDFView and the toolbar inset settle a moment later; then go back to the old spot.
             if pendingPosition != nil {
                 DispatchQueue.main.async { [weak self] in self?.restorePendingPosition() }
             }
+        } else if isPageByPage, didSetZoomLimits, abs(pdfView.scaleFactorForSizeToFit - lastFitScale) > 0.001 {
+            // The window changed size (turned, Split View): fit the whole page again.
+            fitAgain()
+            applyZoomLimits()
+            coordinator.zoomDidChange(to: pdfView.scaleFactor)
         }
     }
 
@@ -238,8 +393,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     private func refitIfPagesChangedWidth() {
         let fit = pdfView.scaleFactorForSizeToFit
         guard didSetZoomLimits, fit > 0, abs(fit - lastFitScale) > 0.001 else { return }
-        lastFitScale = fit
-        pdfView.minScaleFactor = fit * 0.5
+        applyZoomLimits()
         pdfView.autoScales = false  // switching it off and on again makes PDFView fit again
         pdfView.autoScales = true
         coordinator.zoomDidChange(to: pdfView.scaleFactor)
@@ -409,6 +563,10 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             // The board point at the top-left corner, in page points, and the zoom.
             return TabPosition(pageID: board.pageID, point: board.visibleBoardRect.origin, zoom: board.canvas.zoomScale)
         }
+        if isPageByPage {
+            // The whole page is the spot; zoom 0 means "fit" (also in the vertical column).
+            return shownPageID.map { TabPosition(pageID: $0, point: .zero, zoom: 0) }
+        }
         let topLeft = CGPoint(x: pdfView.bounds.minX, y: pdfView.bounds.minY + topInset)
         guard let page = pdfView.page(for: topLeft, nearest: true), let id = notebook.pageID(for: page) else { return nil }
         return TabPosition(pageID: id, point: pdfView.convert(topLeft, to: page), zoom: pdfView.scaleFactor)
@@ -420,6 +578,15 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         guard let index = notebook.pages.firstIndex(where: { $0.id == position.pageID }),
             let page = notebook.document?.page(at: index)
         else { return }  // the page was deleted meanwhile: stay at the top
+        if isPageByPage || position.zoom <= 0 {
+            // Page by page each page opens at its fit; a spot saved page by page (zoom 0) is
+            // the top of its page at the fit in the vertical column.
+            if !isPageByPage { fitAgain() }
+            pdfView.go(to: page)
+            coordinator.zoomDidChange(to: pdfView.scaleFactor)
+            coordinator.reloadVisibleCanvases()
+            return
+        }
         if abs(position.zoom - pdfView.scaleFactor) > 0.001 {
             pdfView.scaleFactor = min(max(position.zoom, pdfView.minScaleFactor), pdfView.maxScaleFactor)
         }

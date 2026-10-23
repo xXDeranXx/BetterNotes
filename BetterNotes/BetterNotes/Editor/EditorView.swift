@@ -12,12 +12,14 @@ struct NotebookEditor: UIViewControllerRepresentable {
     var onObjectError: (String) -> Void = { _ in }
     var isToolPickerHidden = false
     var topInset: CGFloat = 0
+    var scrollsHorizontally = false
     /// Where the tab was last time (tabs); the editor goes back there once laid out.
     var position: TabPosition?
 
     func makeUIViewController(context: Context) -> NotebookEditorViewController {
         let controller = NotebookEditorViewController(notebook: notebook, search: search, navigator: navigator)
         controller.pendingPosition = position
+        controller.scrollsHorizontally = scrollsHorizontally  // before the view loads: no switch
         controller.tools = tools
         controller.onObjectError = onObjectError
         bridge.controller = controller
@@ -31,6 +33,7 @@ struct NotebookEditor: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: NotebookEditorViewController, context: Context) {
         controller.setToolPickerHidden(isToolPickerHidden)
         controller.topInset = topInset
+        controller.scrollsHorizontally = scrollsHorizontally
         controller.applyTools(tools.settings, isRulerActive: tools.isRulerActive)
     }
 }
@@ -41,6 +44,7 @@ struct EditorView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppTheme.settingKey) private var theme = AppTheme.system
+    @AppStorage(NotebookEditorViewController.scrollsHorizontallyKey) private var scrollsHorizontally = false
     let notebook: Notebook
     /// This editor's own tab: its scroll position is written here, never to
     /// `session.activeTab`, which already points at the next tab while this editor goes away.
@@ -129,6 +133,7 @@ struct EditorView: View {
                     // The system tool palette floats above full-screen covers (grid, camera).
                     isToolPickerHidden: isShowingGrid || insertKind == .scan,
                     topInset: 0,
+                    scrollsHorizontally: scrollsHorizontally,
                     position: tab?.position)
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { editorSize = $0 }
                     // On this inner view, so its pickers do not fight with the page insertion's.
@@ -243,7 +248,26 @@ struct EditorView: View {
                     if isSearching { search.clear() }
                     isSearching.toggle()
                 }
+                moreMenu
             }
+        }
+    }
+
+    /// Settings for how the pages are shown (a whiteboard has no pages to page through).
+    private var moreMenu: some View {
+        Menu {
+            Picker("Scroll Direction", selection: $scrollsHorizontally) {
+                Label("Vertical", systemImage: "arrow.up.and.down").tag(false)
+                Label("Horizontal, Page by Page", systemImage: "arrow.left.and.right").tag(true)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+                .font(.title3)
+                .foregroundStyle(theme.primaryText)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
     }
 

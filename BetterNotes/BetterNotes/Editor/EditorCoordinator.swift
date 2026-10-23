@@ -337,6 +337,9 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private var blocksInk: Bool { shape != nil || selectsObjects || placesText }
 
     func overlayDidDisappear(_ overlay: PageOverlayView) {
+        // A page can get its new overlay before the old one goes (page-by-page mode after a page
+        // operation); then the old one leaving must not forget the new one.
+        guard visibleOverlays[overlay.pageID] === overlay else { return }
         if textEditing?.pageID == overlay.pageID { endTextEditing() }  // before the page is forgotten
         visibleOverlays[overlay.pageID] = nil
         if selection?.pageID == overlay.pageID { clearSelection(notify: true) }

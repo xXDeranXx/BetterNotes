@@ -163,7 +163,6 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 - **Zoom window** for writing small text (like Goodnotes' zoom box).
 - **Audio recording** synced to the ink: tap a stroke to play from that moment. Feasible because `PKStrokePath` stores a creation date; recordings store their start time.
 - **Links** between pages and notebooks.
-- Horizontal page-by-page scrolling as an option.
 - More templates (Cornell notes, music staves) and custom templates from a PDF.
 - Presentation mode with a laser pointer.
 
@@ -193,6 +192,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 **Pages, coordinates, rendering**
 - One conversion place, `PageGeometry`. Page coordinates (ink, objects, shapes): points, top-left origin, y down, the **unrotated** page. PDFKit gives each overlay the page's size in points at every zoom and enlarges it from outside; for a page with `/Rotate` it gives the unrotated size and turns the overlay. `PDFPage.bounds(for:)` is before `/Rotate`; `PageMeta.size` is the displayed size.
 - A page is identified by its `PDFPage` object (`Notebook.pageID(for:)`), **never by its index** (PDFKit asks for overlays in the middle of `insert`). Tests that show pages in a `PDFView` give it `notebook.document`.
+- Horizontal page by page (app-wide `scrollsPagesHorizontally`) is PDFKit's page view controller mode: after every page operation, and to switch modes, the editor reloads it (`reloadPages`: drop the overlays itself, document nil, new page view controller, document again, go to the shown page by id); PDFKit otherwise keeps showing a deleted or moved page.
 - `PageRenderer` is the one renderer (thumbnails, covers, export): white page, PDF vector content, rotation applied once, objects, then ink, always in the light appearance; boards by region (`drawBoard`). Export is method (b), ink at 4 px per point. JPEGs (scans, images) go in through `CGImage(jpegDataProviderSource:)` and are embedded unchanged.
 
 **PencilKit canvas**
@@ -253,4 +253,4 @@ Each milestone ends with: the app running on the developer's iPad, tests passing
 - **Whiteboard** (spike measured first; one 10000 pt board, backgrounds, everything from notebooks, export around the content).
 
 ### Where things stand (2026-10-24)
-Everything planned is built and confirmed on the iPad: 500 unit tests and 2 UI tests (`scripts/test.sh`). Format version 5. **Next:** use the app for a week of lectures instead of Goodnotes and note what bothers you; that list picks the next item from "Later" (the known small bugs, a zoom window, audio, links, horizontal scrolling, templates, presentation mode) and whether the debug overlay can go.
+Everything planned is built and confirmed on the iPad; **horizontal page by page** (from "Later", a "⋯" menu in the editor) is built and waits for the iPad check. 508 unit tests and 2 UI tests (`scripts/test.sh`). Format version 5. **Next:** use the app for a week of lectures instead of Goodnotes and note what bothers you; that list picks the next item from "Later" (the known small bugs, a zoom window, audio, links, templates, presentation mode) and whether the debug overlay can go.
