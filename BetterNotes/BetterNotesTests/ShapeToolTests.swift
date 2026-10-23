@@ -336,21 +336,37 @@ struct ShapeToolEditorTests {
         #expect(overlay.shapeGesture.isEnabled)
     }
 
-    @Test func thePreviewStaysUntilTheOldCanvasIsGone() throws {
+    @Test func aShapeKeepsTheCanvasAndThePreviewStaysUntilTheShapeIsDrawn() async throws {
         let (_, _, coordinator, overlay) = try makeEditor()
         let settings = shapeSettings()
         coordinator.apply(settings: settings, isRulerActive: false)
         let outline = ShapeGeometry.outline(.rectangle, from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 250),
                                             style: .solid, width: 3, filled: false)
         overlay.showShapePreview(outline, color: .black, width: 3)
+        let canvas = overlay.canvas
 
         coordinator.addShape(settings.shape, from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 250), on: overlay)
 
-        // The old canvas without the shape still covers the page, so the preview must too.
-        #expect(overlay.retiredCanvas != nil)
-        #expect(overlay.isShowingShapePreview)
-        overlay.retireOldCanvas()
+        // No swap: a fresh canvas made every filled shape on the page flicker.
+        #expect(overlay.canvas === canvas && overlay.retiredCanvas == nil)
+        #expect(overlay.isShowingShapePreview)  // the canvas has not drawn the shape yet
+        coordinator.canvasViewDidFinishRendering(canvas)
+        try await Task.sleep(for: .seconds(EditorCoordinator.previewGracePeriod + 0.2))
         #expect(!overlay.isShowingShapePreview)
+    }
+
+    @Test func startingAStrokeFinishesAPendingSwapAtOnce() throws {
+        let (_, notebook, coordinator, overlay) = try makeEditor()
+        let settings = shapeSettings()
+        coordinator.apply(settings: settings, isRulerActive: false)
+        coordinator.addShape(settings.shape, from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 250), on: overlay)
+        notebook.undoManager.undo()  // swaps in a fresh canvas that waits almost invisible
+        #expect(overlay.retiredCanvas != nil)
+
+        coordinator.canvasViewDidBeginUsingTool(overlay.canvas)
+
+        #expect(overlay.retiredCanvas == nil)
+        #expect(overlay.canvas.alpha == 1)  // the new stroke shows from its first point
     }
 
     @Test func thePreviewIsAsSharpAsTheInkWhenZoomed() throws {

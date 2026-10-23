@@ -178,12 +178,18 @@ final class PageOverlayView: UIView {
         for point in points.dropFirst() { path.addLine(to: point) }
     }
 
-    /// The shape went into the model. The old canvas, which does not have it yet, still covers
-    /// the page for a moment after an ink change (see `replaceCanvas`), so the preview stays
-    /// until that canvas is gone; otherwise the shape would blink.
+    /// The shape went into the model and the canvas. It draws the new ink a moment later, so the
+    /// preview stays until then (cleared by the coordinator when the canvas reports it rendered,
+    /// or by `retireOldCanvas` when a swap is pending), at the latest after `retireTimeout`.
     func finishShapePreview() {
-        if retiredCanvas == nil { clearShapePreview() } else { clearsPreviewOnRetire = true }
+        clearsPreviewOnRetire = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.retireTimeout) { [weak self] in
+            guard let self, self.clearsPreviewOnRetire else { return }
+            self.clearShapePreview()
+        }
     }
+
+    var isWaitingToClearPreview: Bool { clearsPreviewOnRetire }
 
     func clearShapePreview() {
         clearsPreviewOnRetire = false

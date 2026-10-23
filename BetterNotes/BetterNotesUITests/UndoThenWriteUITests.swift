@@ -80,7 +80,11 @@ final class ShapeToolUITests: XCTestCase {
             sleep(1)
         }
 
+        // Write first: PencilKit's stale copy of the strokes only shows on a canvas written on.
         app.buttons["Lasso"].firstMatch.tap()  // tapping a selected tool would open its options
+        app.buttons["Pen"].firstMatch.tap()
+        point(0.45, 0.55).press(forDuration: 0.1, thenDragTo: point(0.75, 0.55))
+        sleep(1)
         app.buttons["Shapes"].firstMatch.tap()  // a rectangle, solid, unless a run changed the shape options
         dragRectangle()
         var pixels = try shot("shape")
@@ -88,7 +92,20 @@ final class ShapeToolUITests: XCTestCase {
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.45), "bottom edge missing")
         XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.40), "freehand ink inside the rectangle")
 
-        undo.tap()
+        // A stroke on the same canvas right after the shape must keep it (no fresh canvas for shapes).
+        app.buttons["Lasso"].firstMatch.tap()
+        app.buttons["Pen"].firstMatch.tap()
+        point(0.45, 0.62).press(forDuration: 0.1, thenDragTo: point(0.75, 0.62))
+        sleep(1)
+        pixels = try shot("stroke after shape")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.35), "a stroke right after the shape dropped it")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.62), "the stroke after the shape is missing")
+        undo.tap()  // the stroke
+        sleep(1)
+        app.buttons["Lasso"].firstMatch.tap()
+        app.buttons["Shapes"].firstMatch.tap()
+
+        undo.tap()  // the shape
         sleep(1)
         pixels = try shot("undone")
         XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.35), "the undone shape is still there")
@@ -103,6 +120,7 @@ final class ShapeToolUITests: XCTestCase {
         sleep(2)
         pixels = try shot("after stroke")
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.6), "pen stroke missing")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.55), "the first pen stroke is missing")
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.35), "the next stroke dropped the shape")
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.45), "the next stroke dropped the shape")
     }

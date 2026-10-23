@@ -247,9 +247,15 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     /// about 40 ms after the drawing was assigned (measured), but removing the old canvas in
     /// that same moment still flickered on the iPad, so it waits `retireGracePeriod` longer.
     func canvasViewDidFinishRendering(_ canvasView: PKCanvasView) {
-        guard let overlay = canvasView.superview as? PageOverlayView, overlay.canvas === canvasView,
-            let retired = overlay.retiredCanvas
-        else { return }
+        guard let overlay = canvasView.superview as? PageOverlayView, overlay.canvas === canvasView else { return }
+        if overlay.retiredCanvas == nil, overlay.isWaitingToClearPreview {
+            // The canvas has drawn the new shape; the preview over it can go a moment later.
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.previewGracePeriod) { [weak overlay] in
+                guard let overlay, overlay.isWaitingToClearPreview else { return }
+                overlay.clearShapePreview()
+            }
+        }
+        guard let retired = overlay.retiredCanvas else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.retireGracePeriod) { [weak overlay, weak retired] in
             guard let overlay, let retired, overlay.retiredCanvas === retired else { return }
             overlay.retireOldCanvas()
@@ -257,20 +263,41 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     }
 
     static let retireGracePeriod: TimeInterval = 0.1
+    /// Shorter than `retireGracePeriod`: preview and ink overlap only for the one new shape.
+    static let previewGracePeriod: TimeInterval = 0.05
+
+    /// The Pencil touches the page while an old canvas still covers a fresh one (right after an
+    /// undo): finish the swap now, so the new stroke is visible from its first point.
+    func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
+        guard let overlay = canvasView.superview as? PageOverlayView, overlay.canvas === canvasView,
+            overlay.retiredCanvas != nil
+        else { return }
+        overlay.retireOldCanvas()
+    }
 
     // MARK: Shapes
 
+    /// Where the shape preview ended last, for the shape that is committed on lift.
+    private var lastPreviewEnd: CGPoint?
+
     @objc private func shapeDragged(_ gesture: ShapeDragGesture) {
         guard let overlay = gesture.view as? PageOverlayView else { return }
-        let end = gesture.currentLocation
         switch gesture.state {
         case .began, .changed:
             guard let shape else { return }
+            let end = gesture.currentLocation
+            lastPreviewEnd = end
             overlay.showShapePreview(
                 outline(for: shape, from: gesture.startLocation, to: end), color: color(of: shape), width: CGFloat(shape.width))
         case .ended:
+            // The shape is what the preview showed last. The position reported with the lift
+            // itself can jump a few points (the Pencil tilts as it leaves the glass), which made
+            // the result a slightly different rectangle than the preview (seen on the iPad).
+            let end = lastPreviewEnd ?? gesture.currentLocation
+            lastPreviewEnd = nil
             if let shape { addShape(shape, from: gesture.startLocation, to: end, on: overlay) } else { overlay.clearShapePreview() }
         default:
+            lastPreviewEnd = nil
             overlay.clearShapePreview()
         }
     }
@@ -294,7 +321,13 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         }
         var drawing = notebook.drawing(for: overlay.pageID)
         drawing.strokes += ShapeGeometry.strokes(for: outline, color: color(of: shape), width: CGFloat(shape.width))
+        // A shape only adds ink, so the canvas keeps its strokes and just gets the new drawing; no
+        // fresh canvas (swapping made every filled shape on the page flicker, seen on the iPad).
+        // `ShapeToolUITests` checks that the next stroke still keeps the shape.
+        isSyncing = true
         notebook.setDrawing(drawing, for: overlay.pageID, actionName: "Shape")
+        overlay.canvas.drawing = drawing
+        isSyncing = false
         overlay.finishShapePreview()
     }
 
