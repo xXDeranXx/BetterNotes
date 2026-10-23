@@ -6,12 +6,15 @@ import UIKit
 /// decision 4). Thumbnails (milestone 4) and export (milestone 6) both use it, so anything
 /// new on a page (objects, milestone 8) is drawn here once and shows up in both.
 ///
-/// Objects lie below the ink (SPEC, "Objects on pages"), so when they exist they are drawn
-/// between the PDF and the ink.
+/// Objects (images, text boxes) lie below the ink (SPEC, "Objects on pages"), so they are
+/// drawn between the PDF and the ink.
 nonisolated enum PageRenderer {
-    /// Renders `page` with `drawing` on top as an opaque image.
+    /// Renders `page` with its objects and `drawing` on top as an opaque image.
     /// `scale` is output pixels per page point: about 0.3 for a thumbnail, 3 or more for export.
-    static func render(page: PDFPage, drawing: PKDrawing, scale: CGFloat) -> UIImage {
+    static func render(
+        page: PDFPage, drawing: PKDrawing, objects: [PageObject] = [], images: ObjectImageSource? = nil,
+        scale: CGFloat
+    ) -> UIImage {
         let displayedSize = self.displayedSize(of: page)
         let pixelSize = CGSize(
             width: (displayedSize.width * scale).rounded(), height: (displayedSize.height * scale).rounded())
@@ -23,7 +26,9 @@ nonisolated enum PageRenderer {
             let cgContext = context.cgContext
             UIColor.white.setFill()
             cgContext.fill(CGRect(origin: .zero, size: pixelSize))
-            draw(page: page, drawing: drawing, in: cgContext, contextSize: pixelSize, scale: scale, inkScale: scale)
+            draw(
+                page: page, drawing: drawing, objects: objects, images: images, in: cgContext,
+                contextSize: pixelSize, scale: scale, inkScale: scale)
         }
     }
 
@@ -45,8 +50,8 @@ nonisolated enum PageRenderer {
     /// `inkScale` is the resolution of the ink, which PencilKit can only produce as a bitmap.
     /// The caller fills the background (a PDF page is white by itself, an image is filled).
     static func draw(
-        page: PDFPage, drawing: PKDrawing, in cgContext: CGContext, contextSize: CGSize, scale: CGFloat,
-        inkScale: CGFloat
+        page: PDFPage, drawing: PKDrawing, objects: [PageObject] = [], images: ObjectImageSource? = nil,
+        in cgContext: CGContext, contextSize: CGSize, scale: CGFloat, inkScale: CGFloat
     ) {
         let box = page.bounds(for: .cropBox)
         let rotation = normalizedRotation(of: page)
@@ -60,33 +65,94 @@ nonisolated enum PageRenderer {
         page.draw(with: .cropBox, to: cgContext)
         cgContext.restoreGState()
 
-        // 2. Objects (milestone 8) go here, below the ink.
+        guard !objects.isEmpty || !drawing.strokes.isEmpty else { return }
 
-        // 3. The ink. Its coordinates are page coordinates (top-left origin), which is
-        //    already the context's orientation, so no flip. Pages are white, so the ink
-        //    is always rendered as on white paper, whatever the system appearance.
-        //    The ink is turned with the page, exactly as PDFKit turns the page's overlay
-        //    on screen, so it stays on the same part of the content.
+        // Objects and ink are in page coordinates (top-left origin), which is already the
+        // context's orientation, so no flip. They are turned with the page, exactly as PDFKit
+        // turns the page's overlay on screen, so they stay on the same part of the content.
+        cgContext.saveGState()
+        defer { cgContext.restoreGState() }
+        cgContext.scaleBy(x: scale, y: scale)  // from here on, units are page points
+        switch rotation {
+        case 90:
+            cgContext.translateBy(x: displayedSize.width, y: 0)
+            cgContext.rotate(by: .pi / 2)
+        case 180:
+            cgContext.translateBy(x: displayedSize.width, y: displayedSize.height)
+            cgContext.rotate(by: .pi)
+        case 270:
+            cgContext.translateBy(x: 0, y: displayedSize.height)
+            cgContext.rotate(by: -.pi / 2)
+        default:
+            break
+        }
+
+        // 2. Objects, below the ink (SPEC, "Objects on pages").
+        drawObjects(objects, images: images, in: cgContext)
+
+        // 3. The ink. Pages are white, so the ink is always rendered as on white paper,
+        //    whatever the system appearance.
         guard !drawing.strokes.isEmpty else { return }
         UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
             let image = drawing.image(from: CGRect(origin: .zero, size: box.size), scale: inkScale)
-            cgContext.saveGState()
-            cgContext.scaleBy(x: scale, y: scale)  // from here on, units are page points
-            switch rotation {
-            case 90:
-                cgContext.translateBy(x: displayedSize.width, y: 0)
-                cgContext.rotate(by: .pi / 2)
-            case 180:
-                cgContext.translateBy(x: displayedSize.width, y: displayedSize.height)
-                cgContext.rotate(by: .pi)
-            case 270:
-                cgContext.translateBy(x: 0, y: displayedSize.height)
-                cgContext.rotate(by: -.pi / 2)
-            default:
-                break
-            }
             image.draw(in: CGRect(origin: .zero, size: box.size))
-            cgContext.restoreGState()
+        }
+    }
+
+    /// Draws objects from bottom to top into a context whose units are page points, y down.
+    /// In a PDF context (export) text stays text and JPEG images are embedded as they are.
+    static func drawObjects(_ objects: [PageObject], images: ObjectImageSource?, in cgContext: CGContext) {
+        guard !objects.isEmpty else { return }
+        // Text drawing (UIKit) draws into the "current" context; make it this one.
+        UIGraphicsPushContext(cgContext)
+        defer { UIGraphicsPopContext() }
+        for object in objects {
+            switch object.content {
+            case .image(let image):
+                guard let picture = images?.image(named: image.file) else {
+                    // The file is missing: a grey box shows that something belongs here.
+                    cgContext.setFillColor(UIColor.systemGray5.resolvedColor(with: .init(userInterfaceStyle: .light)).cgColor)
+                    cgContext.fill(object.frame)
+                    continue
+                }
+                // Core Graphics draws images with y up; flip inside the object's frame.
+                cgContext.saveGState()
+                cgContext.translateBy(x: object.frame.minX, y: object.frame.maxY)
+                cgContext.scaleBy(x: 1, y: -1)
+                cgContext.interpolationQuality = .high
+                cgContext.draw(picture, in: CGRect(origin: .zero, size: object.frame.size))
+                cgContext.restoreGState()
+            case .text(let text):
+                UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+                    TextBoxLayout.draw(text, in: object.frame)
+                }
+            }
+        }
+    }
+}
+
+/// Reads object images from a notebook's `objects/` folder for drawing. Safe to use off the
+/// main thread (export draws in the background).
+nonisolated struct ObjectImageSource: Sendable {
+    let folder: URL
+
+    init(folder: URL) { self.folder = folder }
+    init(package: NotebookPackage) { self.folder = package.objectsURL }
+
+    /// The image as Core Graphics knows it. JPEG and PNG files are opened with their own
+    /// decoders on purpose: a PDF export then embeds the JPEG bytes unchanged instead of a
+    /// much bigger decoded bitmap (as for scans, see `ScanPages.pdfData`).
+    func image(named name: String) -> CGImage? {
+        guard let data = try? Data(contentsOf: folder.appending(path: name)),
+            let provider = CGDataProvider(data: data as CFData)
+        else { return nil }
+        switch (name as NSString).pathExtension.lowercased() {
+        case "jpg", "jpeg":
+            return CGImage(jpegDataProviderSource: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+        case "png":
+            return CGImage(pngDataProviderSource: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+        default:
+            return UIImage(data: data)?.cgImage
         }
     }
 }

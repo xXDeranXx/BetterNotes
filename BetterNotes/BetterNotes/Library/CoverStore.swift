@@ -40,7 +40,9 @@ final class CoverStore {
             let page = PDFDocument(url: package.pdfURL)?.page(at: 0)
         else { return nil }
         let drawing = (try? package.loadDrawing(for: first.id)) ?? nil
-        let image = PageRenderer.render(page: page, drawing: drawing ?? .init(), scale: Self.scale)
+        let image = PageRenderer.render(
+            page: page, drawing: drawing ?? .init(), objects: first.objects, images: ObjectImageSource(package: package),
+            scale: Self.scale)
         cache.setObject(image, forKey: key)
         if let data = image.jpegData(compressionQuality: 0.8) {
             Task.detached(priority: .background) {

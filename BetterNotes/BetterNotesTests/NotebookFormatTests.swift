@@ -19,7 +19,7 @@ struct MetaJSONTests {
         #expect(try package.readMeta() == meta)
     }
 
-    @Test func fileStartsAtFormatVersion1AndKeepsPageOrder() throws {
+    @Test func fileIsAtTheCurrentFormatVersionAndKeepsPageOrder() throws {
         let folder = try TempFolder()
         let pages = (0..<5).map { _ in PageMeta(template: .blank, size: .a4Portrait) }
         let meta = NotebookMeta(
@@ -29,7 +29,7 @@ struct MetaJSONTests {
         try package.writeMeta(meta)
 
         let json = try String(contentsOf: package.metaURL, encoding: .utf8)
-        #expect(json.contains("\"formatVersion\" : 1"))
+        #expect(json.contains("\"formatVersion\" : 2"))
         #expect(try package.readMeta().pages.map(\.id) == pages.map(\.id))
     }
 

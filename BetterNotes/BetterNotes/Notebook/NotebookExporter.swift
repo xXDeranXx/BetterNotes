@@ -40,7 +40,10 @@ enum NotebookExporter {
         let folder = FileManager.default.temporaryDirectory
             .appending(path: "Export-\(UUID().uuidString)", directoryHint: .isDirectory)
         let fileURL = folder.appending(path: fileName(for: notebook.meta.title))
-        let job = Job(pdfData: pdfData, pageIndices: indices, drawingData: drawings)
+        let objects = indices.map { notebook.pages[$0].objects }
+        let job = Job(
+            pdfData: pdfData, pageIndices: indices, drawingData: drawings, objects: objects,
+            images: ObjectImageSource(package: notebook.package))
 
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -73,6 +76,8 @@ enum NotebookExporter {
         let pdfData: Data
         let pageIndices: [Int]
         let drawingData: [Data]
+        let objects: [[PageObject]]
+        let images: ObjectImageSource
     }
 
     private nonisolated static func write(
@@ -94,8 +99,8 @@ enum NotebookExporter {
                 let size = PageRenderer.displayedSize(of: page)
                 context.beginPage(withBounds: CGRect(origin: .zero, size: size), pageInfo: [:])
                 PageRenderer.draw(
-                    page: page, drawing: drawing, in: context.cgContext, contextSize: size, scale: 1,
-                    inkScale: inkScale)
+                    page: page, drawing: drawing, objects: job.objects[position], images: job.images,
+                    in: context.cgContext, contextSize: size, scale: 1, inkScale: inkScale)
                 progress?(Double(position + 1) / Double(job.pageIndices.count))
             }
         }

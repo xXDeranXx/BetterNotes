@@ -54,7 +54,8 @@ final class ThumbnailStore {
         else { return nil }
 
         let image = PageRenderer.render(
-            page: pdfPage, drawing: notebook.drawing(for: page.id), scale: Self.scale)
+            page: pdfPage, drawing: notebook.drawing(for: page.id), objects: notebook.pages[index].objects,
+            images: ObjectImageSource(package: notebook.package), scale: Self.scale)
         renderCount += 1
         cache.setObject(image, forKey: key as NSString)
         saveToDisk(image, for: page)
@@ -64,8 +65,12 @@ final class ThumbnailStore {
 
     // MARK: Disk cache
 
+    /// Pages with objects carry their fingerprint in the name, so a picture from before an
+    /// object changed is never reused (objects live in meta.json, not in the drawing file).
     private func fileURL(for page: PageMeta) -> URL {
-        notebook.package.url.appending(path: "thumbnails/\(page.id.uuidString)-\(page.template.rawValue)-r\(page.rotation).jpg")
+        let objects = page.objects.isEmpty ? "" : "-o\(PageObject.fingerprint(of: page.objects))"
+        return notebook.package.url.appending(
+            path: "thumbnails/\(page.id.uuidString)-\(page.template.rawValue)-r\(page.rotation)\(objects).jpg")
     }
 
     /// Valid when it is not older than the page's saved drawing.

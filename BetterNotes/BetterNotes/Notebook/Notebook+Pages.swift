@@ -69,8 +69,7 @@ extension Notebook {
         var copies = 0
         for (index, page) in pages.enumerated() where ids.contains(page.id) {
             guard let copy = document.page(at: index)?.copy() as? PDFPage else { continue }
-            var meta = page
-            meta.id = UUID()
+            let meta = page.copyWithNewIDs()  // objects come along, with new ids; image files are shared
             copies += 1
             placed.append((index: index + copies, entry: PageEntry(meta: meta, pdfPage: copy, drawing: drawing(for: page.id))))
         }
@@ -199,14 +198,14 @@ extension Notebook {
             pdfPage: page, drawing: nil)
     }
 
-    /// Copies of some of this notebook's pages with new ids, ink included, for putting them
-    /// into another notebook (or this one).
+    /// Copies of some of this notebook's pages with new ids, ink and objects included, for
+    /// putting them into another notebook (or this one). For another notebook, the image files
+    /// must be copied too (see `PageTransfer`).
     func copyEntries(_ ids: Set<UUID>) throws -> [PageEntry] {
         guard let document else { throw NotebookError.pagesCannotBeChanged }
         return pages.enumerated().compactMap { index, page in
             guard ids.contains(page.id), let copy = document.page(at: index)?.copy() as? PDFPage else { return nil }
-            var meta = page
-            meta.id = UUID()
+            let meta = page.copyWithNewIDs()
             return PageEntry(meta: meta, pdfPage: copy, drawing: drawing(for: page.id))
         }
     }

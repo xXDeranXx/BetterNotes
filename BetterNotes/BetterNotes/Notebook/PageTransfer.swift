@@ -38,6 +38,9 @@ enum PageTransfer {
         guard target.document != nil else { throw NotebookError.pagesCannotBeChanged }
 
         let entries = try source.copyEntries(chosen)
+        // Images first: the target's meta.json must never name a file it does not have.
+        try target.package.copyObjectFiles(
+            Set(entries.flatMap(\.meta.objects).compactMap(\.imageFile)), from: source.package)
         try target.insertPages(entries, at: target.pages.count, actionName: "Add Pages")
         await target.saveChanges()
         guard !target.hasUnsavedChanges else {

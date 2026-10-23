@@ -54,20 +54,49 @@ nonisolated struct PageMeta: Codable, Equatable, Identifiable, Sendable {
     var size: PageSize
     /// Clockwise, in degrees: 0, 90, 180 or 270. Page operations (milestone 4) change it.
     var rotation: Int
+    /// Images and text boxes on this page, from bottom to top (format version 2, milestone 8).
+    var objects: [PageObject]
 
-    init(id: UUID = UUID(), template: PageTemplate, size: PageSize, rotation: Int = 0) {
+    init(id: UUID = UUID(), template: PageTemplate, size: PageSize, rotation: Int = 0, objects: [PageObject] = []) {
         self.id = id
         self.template = template
         self.size = size
         self.rotation = rotation
+        self.objects = objects
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, template, size, rotation, objects }
+
+    /// Written by hand only because of `objects`: format version 1 files have no such key,
+    /// and a missing key means "no objects" instead of "damaged file".
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        template = try container.decode(PageTemplate.self, forKey: .template)
+        size = try container.decode(PageSize.self, forKey: .size)
+        rotation = try container.decode(Int.self, forKey: .rotation)
+        objects = try container.decodeIfPresent([PageObject].self, forKey: .objects) ?? []
+    }
+
+    /// The same page with a new id and new object ids, for copies of a page.
+    func copyWithNewIDs() -> PageMeta {
+        var copy = self
+        copy.id = UUID()
+        copy.objects = objects.map { $0.withNewID() }
+        return copy
     }
 }
 
 /// The contents of `meta.json`. Any change to this format increases `currentFormatVersion`
-/// and comes with a migration (SPEC, "File format"). Objects (images, text boxes) are
-/// added in milestone 8 together with that version bump.
+/// and comes with a migration (SPEC, "File format").
+///
+/// Version history:
+/// - 1: pages with template, size and rotation.
+/// - 2 (milestone 8): each page may have `objects` (images, text boxes). A version 1 file
+///   reads as a version 2 file without objects; the first write keeps the old file as
+///   `meta.v1.json` (see `NotebookPackage.preserveOlderFormat`).
 nonisolated struct NotebookMeta: Codable, Equatable, Sendable {
-    static let currentFormatVersion = 1
+    static let currentFormatVersion = 2
 
     var formatVersion: Int
     var id: UUID

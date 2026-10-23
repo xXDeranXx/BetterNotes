@@ -66,8 +66,18 @@ final class Notebook {
     /// The editor refreshes its `PDFView` here.
     @ObservationIgnored var onStructureChange: (() -> Void)?
 
-    /// Anything not yet written: ink or page changes.
-    var hasUnsavedChanges: Bool { !dirtyPageIDs.isEmpty || structureDirty }
+    /// True while an object (image, text box) changed and `meta.json` is not yet written.
+    /// Objects live in `meta.json`, so saving them never rewrites the PDF. Counted like the
+    /// page list, so a change made during a save is not wrongly marked as saved.
+    @ObservationIgnored private(set) var objectsDirty = false
+    @ObservationIgnored private var objectsRevision = 0
+
+    /// Called with a page id after that page's objects changed (also by undo and redo). A
+    /// visible page shows the new objects; the editor sets this.
+    @ObservationIgnored var onObjectsChange: ((UUID) -> Void)?
+
+    /// Anything not yet written: ink, objects or page changes.
+    var hasUnsavedChanges: Bool { !dirtyPageIDs.isEmpty || structureDirty || objectsDirty }
 
     /// How long after the last change autosave waits (SPEC: about 2 seconds).
     @ObservationIgnored var autosaveDelay: Duration = .seconds(2)
@@ -223,6 +233,36 @@ final class Notebook {
         }
     }
 
+    // MARK: Objects
+
+    /// The images and text boxes of a page, from bottom to top.
+    func objects(on pageID: UUID) -> [PageObject] {
+        meta.pages.first { $0.id == pageID }?.objects ?? []
+    }
+
+    /// Replaces a page's objects and records one undo step. Every change to objects (add,
+    /// move, resize, edit, delete; see `Notebook+Objects.swift`) comes through here, like
+    /// `setDrawing` for ink. Does nothing for a page that is not in the notebook.
+    func setObjects(_ newObjects: [PageObject], for pageID: UUID, actionName: String) {
+        guard let index = meta.pages.firstIndex(where: { $0.id == pageID }) else { return }
+        let oldObjects = meta.pages[index].objects
+        guard newObjects != oldObjects else { return }
+
+        performUndoableChange(actionName) {
+            meta.pages[index].objects = newObjects
+            objectsDirty = true
+            objectsRevision += 1
+            revisions[pageID, default: 0] += 1  // thumbnails redraw
+            scheduleAutosave()
+            undoManager.registerUndo(withTarget: self) { notebook in
+                MainActor.assumeIsolated {
+                    notebook.setObjects(oldObjects, for: pageID, actionName: actionName)
+                }
+            }
+            onObjectsChange?(pageID)
+        }
+    }
+
     // MARK: Undo grouping
 
     /// Runs `change` as one undo step. Nested calls (a page operation that changes several
@@ -298,7 +338,10 @@ final class Notebook {
                 structureFailure = "The notebook's PDF could not be prepared for saving."
             }
         }
-        guard !snapshots.isEmpty || structure != nil || structureFailure != nil else { return }
+        // Object changes only need `meta.json`; remember which change this save covers.
+        let objectsRevisionToSave: Int? = objectsDirty ? objectsRevision : nil
+        guard !snapshots.isEmpty || structure != nil || structureFailure != nil || objectsRevisionToSave != nil
+        else { return }
         await saveHook?()
 
         // The file work runs off the main thread so writing never stutters the pen.
@@ -332,6 +375,8 @@ final class Notebook {
         var failure = result.failure ?? structureFailure
         if result.structureSaved, let structure, structureRevision == structure.revision {
             structureDirty = false
+            // The committed meta.json holds the objects as they were when the save began.
+            if objectsRevisionToSave == objectsRevision { objectsDirty = false }
         }
         for snapshot in result.saved {
             unreadablePageIDs.remove(snapshot.pageID)  // its old file is now safely copied aside
@@ -342,10 +387,13 @@ final class Notebook {
         // meta.json is only written alone when the page list on disk is current: writing a
         // newer page list without its PDF would make the two disagree. (When the page list
         // was saved this round, the commit above already wrote meta.json.)
-        if !result.saved.isEmpty, !structureDirty, !result.structureSaved {
+        if !result.saved.isEmpty || objectsDirty, !structureDirty, !result.structureSaved {
             meta.updatedAt = .now
+            // Written now, on the main thread, so this is the newest objects state.
+            let writtenObjectsRevision = objectsRevision
             do {
                 try package.writeMeta(meta)
+                if objectsRevision == writtenObjectsRevision { objectsDirty = false }
             } catch {
                 failure = failure ?? error.localizedDescription
             }

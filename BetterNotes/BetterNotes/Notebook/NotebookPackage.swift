@@ -92,14 +92,62 @@ nonisolated struct NotebookPackage: Sendable {
     }
 
     func writeMeta(_ meta: NotebookMeta) throws {
+        try preserveOlderFormat()
         try Self.encode(meta).write(to: metaURL, options: .atomic)
     }
 
+    /// Always writes the current format: a notebook read from an older file is migrated by
+    /// writing it again (the older file is kept first, see `preserveOlderFormat`).
     private static func encode(_ meta: NotebookMeta) throws -> Data {
+        var current = meta
+        current.formatVersion = NotebookMeta.currentFormatVersion
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]  // readable, stable diffs
-        return try encoder.encode(meta)
+        return try encoder.encode(current)
+    }
+
+    /// SPEC rule 4: a migration keeps a copy of the old version. Before `meta.json` is first
+    /// written in the new format, the old file is copied to `meta.v<old version>.json`
+    /// (only once; an existing copy is never overwritten). Does nothing for current files.
+    func preserveOlderFormat() throws {
+        guard let data = try? Data(contentsOf: metaURL) else { return }  // no file yet: nothing to keep
+        struct VersionProbe: Decodable { var formatVersion: Int }
+        guard let version = try? JSONDecoder().decode(VersionProbe.self, from: data).formatVersion,
+            version < NotebookMeta.currentFormatVersion
+        else { return }
+        let copy = url.appending(path: "meta.v\(version).json")
+        guard !FileManager.default.fileExists(atPath: copy.path) else { return }
+        try data.write(to: copy, options: .atomic)
+    }
+
+    // MARK: Objects (images)
+
+    var objectsURL: URL { url.appending(path: "objects", directoryHint: .isDirectory) }
+
+    func objectFileURL(named name: String) -> URL {
+        objectsURL.appending(path: name)
+    }
+
+    /// Writes an image file into `objects/`. Images are written before any `meta.json` that
+    /// names them, and never changed or deleted afterwards (undo may need them again).
+    func writeObjectFile(_ data: Data, named name: String) throws {
+        // Imported notebooks and notebooks from older versions may not have the folder yet.
+        try FileManager.default.createDirectory(at: objectsURL, withIntermediateDirectories: true)
+        try data.write(to: objectFileURL(named: name), options: .atomic)
+    }
+
+    /// Copies image files from another notebook into this one (pages moved or copied between
+    /// notebooks). A file that is already here is left alone: the same name is the same image.
+    func copyObjectFiles(_ names: Set<String>, from source: NotebookPackage) throws {
+        guard !names.isEmpty else { return }
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: objectsURL, withIntermediateDirectories: true)
+        for name in names {
+            let target = objectFileURL(named: name)
+            guard !fileManager.fileExists(atPath: target.path) else { continue }
+            try fileManager.copyItem(at: source.objectFileURL(named: name), to: target)
+        }
     }
 
     // MARK: Changing the pages (document.pdf and meta.json together)
@@ -124,6 +172,7 @@ nonisolated struct NotebookPackage: Sendable {
 
     /// Steps 1 and 2 of `commitStructure`; separate so tests can stop "in the middle".
     func stageStructure(pdfData: Data, meta: NotebookMeta) throws {
+        try preserveOlderFormat()
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: pendingURL.path) { try fileManager.removeItem(at: pendingURL) }
         try fileManager.createDirectory(at: pendingURL, withIntermediateDirectories: true)
