@@ -14,6 +14,9 @@ final class WindowSession {
 
     @ObservationIgnored private let registry: OpenNotebookRegistry
     @ObservationIgnored private var claimedURL: URL?
+    /// This window's id in the registry. Until tabs arrive (step 2) the open notebook is one tab.
+    @ObservationIgnored let windowID = UUID()
+    @ObservationIgnored private let tabID = UUID()
 
     init(registry: OpenNotebookRegistry = .shared) {
         self.registry = registry
@@ -22,7 +25,7 @@ final class WindowSession {
     /// A window that goes away without `close()` (the user swipes it away) still lets go of
     /// its notebook. Its changes were saved when the app left the foreground.
     isolated deinit {
-        if let claimedURL { registry.release(claimedURL) }
+        registry.releaseAll(ownedBy: windowID)
     }
 
     /// While a notebook fades in over the library (see `openAnimated`).
@@ -77,7 +80,7 @@ final class WindowSession {
     }
 
     func open(_ package: NotebookPackage) throws {
-        guard registry.claim(package.url) else { throw NotebookError.alreadyOpen }
+        guard registry.claim(package.url, by: NotebookOwner(window: windowID, tab: tabID)) else { throw NotebookError.alreadyOpen }
         do {
             notebook = try Notebook.open(package)
             claimedURL = package.url
