@@ -41,9 +41,11 @@ enum NotebookExporter {
             .appending(path: "Export-\(UUID().uuidString)", directoryHint: .isDirectory)
         let fileURL = folder.appending(path: fileName(for: notebook.meta.title))
         let objects = indices.map { notebook.pages[$0].objects }
+        // The outline goes along as bookmarks, for the exported pages only.
+        let bookmarks = Outline.tree(notebook.outline ?? [], pageIDs: indices.map { notebook.pages[$0].id })
         let job = Job(
             pdfData: pdfData, pageIndices: indices, drawingData: drawings, objects: objects,
-            images: ObjectImageSource(package: notebook.package))
+            images: ObjectImageSource(package: notebook.package), bookmarks: bookmarks)
 
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -78,6 +80,7 @@ enum NotebookExporter {
         let drawingData: [Data]
         let objects: [[PageObject]]
         let images: ObjectImageSource
+        let bookmarks: [OutlineNode]
     }
 
     private nonisolated static func write(
@@ -105,5 +108,23 @@ enum NotebookExporter {
             }
         }
         if let failure { throw failure }
+        if !job.bookmarks.isEmpty { try addBookmarks(job.bookmarks, to: url) }
+    }
+
+    /// UIKit's PDF renderer cannot write bookmarks, so the finished pages go into a new PDFKit
+    /// document that gets the outline and is written again (to a second file, then swapped in).
+    /// A new document, because PDFKit dropped the bookmarks when it wrote the renderer's file
+    /// itself back (measured, `OutlinePDFTests`).
+    private nonisolated static func addBookmarks(_ bookmarks: [OutlineNode], to url: URL) throws {
+        guard let rendered = PDFDocument(url: url) else { throw NotebookError.pdfUnreadable }
+        let document = PDFDocument()
+        for index in 0..<rendered.pageCount {
+            guard let page = rendered.page(at: index)?.copy() as? PDFPage else { throw NotebookError.pdfUnreadable }
+            document.insert(page, at: index)
+        }
+        Outline.writeBookmarks(bookmarks, into: document)
+        let temporary = url.deletingPathExtension().appendingPathExtension("outline.pdf")
+        guard document.write(to: temporary) else { throw NotebookError.pdfCreationFailed }
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
     }
 }

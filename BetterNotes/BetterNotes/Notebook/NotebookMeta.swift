@@ -98,8 +98,11 @@ nonisolated struct PageMeta: Codable, Equatable, Identifiable, Sendable {
 /// - 3: text boxes may have a `font` family and `styles` (bold and italic ranges). A version 2
 ///   text box reads as plain text in the system font; the first write keeps `meta.v2.json`.
 ///   (Without the new number, a version 2 app would open the file and drop the styles on save.)
+/// - 4 (M9): an optional `outline` (see `OutlineEntry`). Missing means "not set up yet": it is
+///   filled from the PDF's bookmarks or text the first time the outline is shown. The first
+///   write keeps `meta.v3.json`.
 nonisolated struct NotebookMeta: Codable, Equatable, Sendable {
-    static let currentFormatVersion = 3
+    static let currentFormatVersion = 4
 
     var formatVersion: Int
     var id: UUID
@@ -109,6 +112,8 @@ nonisolated struct NotebookMeta: Codable, Equatable, Sendable {
     /// Cover color as "#RRGGBB".
     var coverColor: String
     var pages: [PageMeta]
+    /// `nil` until the outline was set up once (format version 4).
+    var outline: [OutlineEntry]?
 
     init(
         id: UUID = UUID(), title: String, createdAt: Date, coverColor: String, pages: [PageMeta]

@@ -108,19 +108,69 @@ struct PageThumbnailView: View {
     }
 }
 
-/// The strip of page pictures at the side of the editor: tap to jump, long-press for the
-/// page menu, and a button that adds a page at the end.
+/// The sidebar at the side of the editor, with two tabs (like Goodnotes): the page pictures
+/// (tap to jump, long-press for the page menu, a button that adds a page at the end) and the
+/// outline (see `OutlineList`).
 struct PageSidebar: View {
+    enum Mode: String { case pages, outline }
+
     let notebook: Notebook
     let thumbnails: ThumbnailStore
     let navigator: PageNavigator
     let actions: PageActions
     @Binding var insertKind: InsertKind?
 
+    /// Remembered per window, like the sidebar's place in other apps.
+    @SceneStorage("sidebarMode") private var mode = Mode.pages
     /// The page a drag is currently over, to show where it would land.
     @State private var dropTargetID: UUID?
+    /// The page whose "Add to Outline" dialog is open.
+    @State private var outlinePage: UUID?
+    @State private var outlineTitle = ""
+
+    static let width: CGFloat = 200
 
     var body: some View {
+        VStack(spacing: 0) {
+            Picker("Sidebar", selection: $mode) {
+                Text("Pages").tag(Mode.pages)
+                Text("Outline").tag(Mode.outline)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            switch mode {
+            case .pages: pageList
+            case .outline:
+                OutlineList(notebook: notebook, navigator: navigator) { addToOutline($0) }
+            }
+        }
+        .frame(width: Self.width)
+        .background(Color(.secondarySystemBackground))
+        // A dialog, not a field in a popover: the Pencil's Scribble would type into that.
+        .alert("Add to Outline", isPresented: Binding(
+            get: { outlinePage != nil }, set: { if !$0 { outlinePage = nil } })
+        ) {
+            TextField("Title", text: $outlineTitle)
+            Button("Add") {
+                if let page = outlinePage { notebook.addOutlineEntry(title: outlineTitle, pageID: page) }
+                outlinePage = nil
+            }
+            Button("Cancel", role: .cancel) { outlinePage = nil }
+        } message: {
+            Text("The entry points at this page and moves with it.")
+        }
+    }
+
+    /// Opens the dialog for a page, with "Page N" as the suggested title.
+    private func addToOutline(_ pageID: UUID) {
+        let number = (notebook.pages.firstIndex { $0.id == pageID } ?? 0) + 1
+        outlineTitle = "Page \(number)"
+        outlinePage = pageID
+    }
+
+    private var pageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 // Lazy: only the pictures on screen are created (and rendered), which keeps a
@@ -149,7 +199,10 @@ struct PageSidebar: View {
                         } isTargeted: { isTargeted in
                             if isTargeted { dropTargetID = page.id } else if dropTargetID == page.id { dropTargetID = nil }
                         }
-                        .contextMenu { PageMenu(page: page, actions: actions) }
+                        .contextMenu {
+                            PageMenu(page: page, actions: actions)
+                            Button("Add to Outline…", systemImage: "list.bullet.indent") { addToOutline(page.id) }
+                        }
                     }
                     AddPageButton(actions: actions, insertKind: $insertKind)
                 }
@@ -160,9 +213,8 @@ struct PageSidebar: View {
             .onChange(of: navigator.currentPageID) { _, id in
                 if let id { withAnimation { proxy.scrollTo(id) } }
             }
+            .onAppear { if let id = navigator.currentPageID { proxy.scrollTo(id) } }
         }
-        .frame(width: 168)
-        .background(.regularMaterial)
     }
 }
 

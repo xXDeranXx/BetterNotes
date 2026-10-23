@@ -84,7 +84,7 @@ struct FormatVersion3Tests {
         try package.writeMeta(meta)
 
         #expect(try Data(contentsOf: package.url.appending(path: "meta.v2.json")) == original)
-        #expect(try package.readMeta().formatVersion == 3)
+        #expect(try package.readMeta().formatVersion == NotebookMeta.currentFormatVersion)
     }
 }
 

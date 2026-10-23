@@ -66,18 +66,25 @@ final class Notebook {
     /// The editor refreshes its `PDFView` here.
     @ObservationIgnored var onStructureChange: (() -> Void)?
 
-    /// True while an object (image, text box) changed and `meta.json` is not yet written.
-    /// Objects live in `meta.json`, so saving them never rewrites the PDF. Counted like the
+    /// True while an object (image, text box) or the outline changed and `meta.json` is not yet
+    /// written. Both live in `meta.json`, so saving them never rewrites the PDF. Counted like the
     /// page list, so a change made during a save is not wrongly marked as saved.
-    @ObservationIgnored private(set) var objectsDirty = false
-    @ObservationIgnored private var objectsRevision = 0
+    @ObservationIgnored private(set) var metaDirty = false
+    @ObservationIgnored private var metaRevision = 0
+
+    /// Marks `meta.json` as changed (objects, outline) and schedules autosave.
+    func markMetaChanged() {
+        metaDirty = true
+        metaRevision += 1
+        scheduleAutosave()
+    }
 
     /// Called with a page id after that page's objects changed (also by undo and redo). A
     /// visible page shows the new objects; the editor sets this.
     @ObservationIgnored var onObjectsChange: ((UUID) -> Void)?
 
     /// Anything not yet written: ink, objects or page changes.
-    var hasUnsavedChanges: Bool { !dirtyPageIDs.isEmpty || structureDirty || objectsDirty }
+    var hasUnsavedChanges: Bool { !dirtyPageIDs.isEmpty || structureDirty || metaDirty }
 
     /// How long after the last change autosave waits (SPEC: about 2 seconds).
     @ObservationIgnored var autosaveDelay: Duration = .seconds(2)
@@ -250,10 +257,8 @@ final class Notebook {
 
         performUndoableChange(actionName) {
             meta.pages[index].objects = newObjects
-            objectsDirty = true
-            objectsRevision += 1
             revisions[pageID, default: 0] += 1  // thumbnails redraw
-            scheduleAutosave()
+            markMetaChanged()
             undoManager.registerUndo(withTarget: self) { notebook in
                 MainActor.assumeIsolated {
                     notebook.setObjects(oldObjects, for: pageID, actionName: actionName)
@@ -261,6 +266,35 @@ final class Notebook {
             }
             onObjectsChange?(pageID)
         }
+    }
+
+    // MARK: Outline
+
+    /// The stored outline; `nil` until it was set up (see `Notebook+Outline.swift`).
+    var outline: [OutlineEntry]? { meta.outline }
+
+    /// Replaces the outline and records one undo step, like `setObjects`. Every outline change
+    /// (add, rename, indent, delete, generate) comes through here.
+    func setOutline(_ newOutline: [OutlineEntry], actionName: String) {
+        let oldOutline = meta.outline
+        guard newOutline != oldOutline else { return }
+        performUndoableChange(actionName) {
+            meta.outline = newOutline
+            markMetaChanged()
+            undoManager.registerUndo(withTarget: self) { notebook in
+                MainActor.assumeIsolated {
+                    notebook.setOutline(oldOutline ?? [], actionName: actionName)
+                }
+            }
+        }
+    }
+
+    /// The first outline of a notebook (from its bookmarks or text): saved, but not an undo
+    /// step, because the user did nothing. Ignored once an outline exists.
+    func setUpOutline(_ entries: [OutlineEntry]) {
+        guard meta.outline == nil else { return }
+        meta.outline = entries
+        markMetaChanged()
     }
 
     // MARK: Undo grouping
@@ -339,8 +373,8 @@ final class Notebook {
             }
         }
         // Object changes only need `meta.json`; remember which change this save covers.
-        let objectsRevisionToSave: Int? = objectsDirty ? objectsRevision : nil
-        guard !snapshots.isEmpty || structure != nil || structureFailure != nil || objectsRevisionToSave != nil
+        let metaRevisionToSave: Int? = metaDirty ? metaRevision : nil
+        guard !snapshots.isEmpty || structure != nil || structureFailure != nil || metaRevisionToSave != nil
         else { return }
         await saveHook?()
 
@@ -376,7 +410,7 @@ final class Notebook {
         if result.structureSaved, let structure, structureRevision == structure.revision {
             structureDirty = false
             // The committed meta.json holds the objects as they were when the save began.
-            if objectsRevisionToSave == objectsRevision { objectsDirty = false }
+            if metaRevisionToSave == metaRevision { metaDirty = false }
         }
         for snapshot in result.saved {
             unreadablePageIDs.remove(snapshot.pageID)  // its old file is now safely copied aside
@@ -387,13 +421,13 @@ final class Notebook {
         // meta.json is only written alone when the page list on disk is current: writing a
         // newer page list without its PDF would make the two disagree. (When the page list
         // was saved this round, the commit above already wrote meta.json.)
-        if !result.saved.isEmpty || objectsDirty, !structureDirty, !result.structureSaved {
+        if !result.saved.isEmpty || metaDirty, !structureDirty, !result.structureSaved {
             meta.updatedAt = .now
             // Written now, on the main thread, so this is the newest objects state.
-            let writtenObjectsRevision = objectsRevision
+            let writtenMetaRevision = metaRevision
             do {
                 try package.writeMeta(meta)
-                if objectsRevision == writtenObjectsRevision { objectsDirty = false }
+                if metaRevision == writtenMetaRevision { metaDirty = false }
             } catch {
                 failure = failure ?? error.localizedDescription
             }
