@@ -269,6 +269,7 @@ Decided:
   - Known limit: the reload runs inside the page operation's undo group, so text still being typed page by page is finished into the same undo step (one undo takes back both; nothing is lost).
   - Tests: `PageByPageTests` (9; also: the Pencil restriction survives a reload and a mode switch, "+" with reveal lands on the new page, the sidebar highlight follows a delete; the real editor in a window: whole page fits, go to page, delete the shown page and undo, delete the last page, duplicate and move before the shown page, switch both ways, Pencil does not page, tab position into the column). 508 unit tests and both UI tests pass.
   - **For the iPad:** swipe feel, fast Pencil strokes near the page edge must not turn the page, finger drawing on + horizontal (one finger draws or turns?), zoom sharpness after turning pages, page operations from the sidebar while page by page, heat.
+- **Horizontal page by page, iPad results part 1 (2026-10-24):** OK: swiping and whole-page fit, fast Pencil strokes near the page edge do not turn the page, ink sharp after zooming and turning pages, "+" lands on the new page and page operations from the sidebar and grid, switching directions keeps the page. Still to check: search across pages, turning the iPad and Split View, text box above the keyboard, finger drawing, tab restore, heat.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones
