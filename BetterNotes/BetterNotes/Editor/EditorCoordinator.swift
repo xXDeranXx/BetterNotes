@@ -227,6 +227,13 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         show(notebook.drawing(for: pageID), in: canvas)
     }
 
+    /// PencilKit has drawn the canvas's ink: a canvas that was swapped in after an undo now
+    /// shows the right ink, so the old one that covered it can go.
+    func canvasViewDidFinishRendering(_ canvasView: PKCanvasView) {
+        guard let overlay = canvasView.superview as? PageOverlayView, overlay.canvas === canvasView else { return }
+        overlay.retireOldCanvas()
+    }
+
     // MARK: Canvas → model
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {

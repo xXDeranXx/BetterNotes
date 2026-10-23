@@ -105,12 +105,48 @@ struct EditorCoordinatorTests {
 
         let after = overlay.canvas
         #expect(after !== before)  // PencilKit's own copy of the strokes is not reused
-        #expect(before.superview == nil && after.superview === overlay)
+        #expect(after.superview === overlay)
+        // The old canvas covers the new one until that has drawn its ink (no flicker), but takes no touches.
+        #expect(overlay.retiredCanvas === before && !before.isUserInteractionEnabled && before.delegate == nil)
+        let subviews = overlay.subviews
+        #expect(subviews.firstIndex(of: before)! > subviews.firstIndex(of: after)!)
+        setup.coordinator.canvasViewDidFinishRendering(after)
+        #expect(before.superview == nil && overlay.retiredCanvas == nil)
         #expect(after.delegate === setup.coordinator)
         #expect((after.tool as? PKInkingTool)?.inkType == .fountainPen)
         #expect(after.isRulerActive)
         #expect(after.zoomScale == before.zoomScale && after.bounds == before.bounds)
         #expect(after.drawing.strokes.isEmpty)
+    }
+
+    @Test func theOldCanvasGoesAtTheLatestAfterTheTimeout() async throws {
+        let setup = try makeSetup()
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.canvas.delegate = setup.coordinator
+        setup.coordinator.overlayDidAppear(overlay)
+        userDraws(sampleDrawing(), on: overlay, using: setup.coordinator)
+        setup.notebook.undoManager.undo()
+        let old = try #require(overlay.retiredCanvas)
+
+        try await Task.sleep(for: .seconds(PageOverlayView.retireTimeout + 0.3))
+
+        #expect(old.superview == nil && overlay.retiredCanvas == nil)
+    }
+
+    @Test func aQuickSecondUndoKeepsOnlyOneOldCanvas() throws {
+        let setup = try makeSetup()
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.canvas.delegate = setup.coordinator
+        setup.coordinator.overlayDidAppear(overlay)
+        userDraws(sampleDrawing(), on: overlay, using: setup.coordinator)
+        userDraws(overlay.canvas.drawing.appending(sampleDrawing(offset: 50)), on: overlay, using: setup.coordinator)
+
+        setup.notebook.undoManager.undo()
+        let first = try #require(overlay.retiredCanvas)
+        setup.notebook.undoManager.undo()
+
+        #expect(first.superview == nil)
+        #expect(overlay.subviews.filter { $0 is PageCanvasView }.count == 2)  // the new one and one old
     }
 
     @Test func aCanvasThatAppearsLaterShowsChangesMadeWhileItWasOffScreen() throws {

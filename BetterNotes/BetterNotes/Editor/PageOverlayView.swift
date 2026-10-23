@@ -78,8 +78,15 @@ final class PageOverlayView: UIView {
     /// strokes. The canvas reports the new drawing, but the next stroke is added to the old
     /// one, so an undone stroke came back (measured with a UI test in the simulator, also on
     /// the code of milestone 5; reported on the iPad). A fresh canvas has no such history.
+    ///
+    /// A new canvas draws its ink a moment later, so swapping straight away made the page
+    /// flicker (empty for a frame or two, seen on the iPad). The old canvas therefore stays on
+    /// top, still showing the old ink, until the new one has finished rendering
+    /// (`retireOldCanvas`, called from `canvasViewDidFinishRendering`), or at the latest after
+    /// `retireTimeout`. It takes no touches meanwhile, so the Pencil already writes on the new one.
     @discardableResult
     func replaceCanvas() -> PageCanvasView {
+        retireOldCanvas()  // a quick second undo: the first old canvas goes now
         let old = canvas
         let new = Self.makeCanvas()
         new.delegate = old.delegate
@@ -87,12 +94,27 @@ final class PageOverlayView: UIView {
         new.isRulerActive = old.isRulerActive
         new.drawingPolicy = old.drawingPolicy
         old.delegate = nil
-        insertSubview(new, aboveSubview: old)
-        old.removeFromSuperview()
+        old.isUserInteractionEnabled = false
+        insertSubview(new, belowSubview: old)
+        retiredCanvas = old
         canvas = new
         setNeedsLayout()
         layoutIfNeeded()  // size and zoom first, then the drawing (SPEC, M2 lesson)
+        let timeout = Self.retireTimeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self, weak old] in
+            guard let self, let old, self.retiredCanvas === old else { return }
+            self.retireOldCanvas()
+        }
         return new
+    }
+
+    /// The canvas that was replaced and still covers the new one (see `replaceCanvas`).
+    private(set) var retiredCanvas: PageCanvasView?
+    static let retireTimeout: TimeInterval = 0.5
+
+    func retireOldCanvas() {
+        retiredCanvas?.removeFromSuperview()
+        retiredCanvas = nil
     }
 
     /// How much sharper than the page the canvas renders (1 = the page's own size).
