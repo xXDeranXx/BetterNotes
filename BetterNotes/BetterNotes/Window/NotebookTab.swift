@@ -21,6 +21,8 @@ final class NotebookTab: Identifiable {
     let id: UUID
     private(set) var url: URL
     private(set) var title: String
+    /// The notebook's id from `meta.json`, so a restored tab finds a moved notebook again.
+    private(set) var notebookID: UUID?
     /// nil while released.
     private(set) var notebook: Notebook?
     /// Set by the editor while the tab is on screen.
@@ -32,7 +34,17 @@ final class NotebookTab: Identifiable {
         self.id = id
         self.url = notebook.package.url
         self.title = notebook.meta.title
+        self.notebookID = notebook.meta.id
         self.notebook = notebook
+    }
+
+    /// A released tab (restored after a launch): only the title is read now, the notebook
+    /// loads when the tab is shown.
+    init(releasedAt url: URL, notebookID: UUID?) {
+        self.id = UUID()
+        self.url = url
+        self.notebookID = notebookID
+        self.title = (try? NotebookPackage(url: url).readMeta().title) ?? url.deletingPathExtension().lastPathComponent
     }
 
     var isLoaded: Bool { notebook != nil }
@@ -41,7 +53,10 @@ final class NotebookTab: Identifiable {
     func relocate(to newURL: URL) {
         precondition(notebook == nil, "only a released tab can follow its notebook")
         url = newURL
-        if let meta = try? NotebookPackage(url: newURL).readMeta() { title = meta.title }
+        if let meta = try? NotebookPackage(url: newURL).readMeta() {
+            title = meta.title
+            notebookID = meta.id
+        }
     }
 
     /// Loads the model again if the tab was released.
@@ -50,6 +65,7 @@ final class NotebookTab: Identifiable {
         let notebook = try Notebook.open(NotebookPackage(url: url))
         self.notebook = notebook
         title = notebook.meta.title
+        notebookID = notebook.meta.id
         return notebook
     }
 

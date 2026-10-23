@@ -7,6 +7,7 @@ final class UndoThenWriteUITests: XCTestCase {
     @MainActor
     func testAnUndoneStrokeStaysGoneAfterTheNextStroke() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
         app.launch()
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
@@ -53,6 +54,7 @@ final class ShapeToolUITests: XCTestCase {
     @MainActor
     func testAShapeIsDrawnUndoneAndKeptByTheNextStroke() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
         app.launch()
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
@@ -126,6 +128,99 @@ final class ShapeToolUITests: XCTestCase {
     }
 }
 
+/// End to end for tabs (tabs step 6): two notebooks as tabs, ink in each, switching keeps the
+/// ink and the first tab's undo history, typing is kept when switching away in the middle of
+/// it, and the tabs come back after the app was killed and launched again.
+final class TabsUITests: XCTestCase {
+    @MainActor
+    func testTwoTabsKeepInkUndoAndTypingAndComeBackAfterRelaunch() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-skipTabRestore", "YES"]
+        app.launch()
+        let window = app.windows.firstMatch
+        func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
+            window.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        }
+        func stroke(y: CGFloat) {
+            point(0.45, y).press(forDuration: 0.1, thenDragTo: point(0.75, y))
+            sleep(1)
+        }
+        func pixels(_ name: String) throws -> Pixels {
+            let shot = XCUIScreen.main.screenshot()
+            let attachment = XCTAttachment(screenshot: shot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return try XCTUnwrap(Pixels(shot.image))
+        }
+        func newNotebook() {
+            XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
+            app.buttons["Add"].tap()
+            app.buttons["New Notebook"].firstMatch.tap()
+            let create = app.buttons["Create"].firstMatch
+            XCTAssertTrue(create.waitForExistence(timeout: 10))
+            create.tap()
+            XCTAssertTrue(app.buttons["Undo"].firstMatch.waitForExistence(timeout: 10))
+            sleep(2)
+        }
+        let tabs = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'tab:'"))
+
+        // Notebook 1: a stroke at 0.4, then a text box that is still being typed in.
+        newNotebook()
+        app.buttons["Lasso"].firstMatch.tap()  // tool settings are remembered: reach exactly the pen
+        app.buttons["Pen"].firstMatch.tap()
+        stroke(y: 0.4)
+        app.buttons["Text box"].firstMatch.tap()
+        sleep(1)
+        point(0.3, 0.6).tap()
+        sleep(1)
+        for key in ["H", "H", "H"] {
+            if app.keys[key].waitForExistence(timeout: 2) { app.keys[key].tap() }
+        }
+        sleep(1)
+
+        // Notebook 2 in a new tab (from the library), with a stroke at 0.5.
+        app.buttons["Library"].firstMatch.tap()
+        newNotebook()
+        app.buttons["Lasso"].firstMatch.tap()
+        app.buttons["Pen"].firstMatch.tap()
+        stroke(y: 0.5)
+        XCTAssertEqual(tabs.count, 2)
+
+        // Back to notebook 1: its ink and the typed text are there, notebook 2's ink is not.
+        tabs.element(boundBy: 0).tap()
+        sleep(2)
+        var page = try pixels("first tab again")
+        XCTAssertTrue(page.hasDarkLine(atX: 0.6, nearY: 0.4), "the first tab's stroke is missing")
+        XCTAssertFalse(page.hasDarkLine(atX: 0.6, nearY: 0.5), "the second tab's stroke shows in the first")
+        XCTAssertTrue(page.hasDarkPixel(fromX: 0.3, toX: 0.36, nearY: 0.6), "the text typed before switching is gone")
+
+        // Its undo history survived the switch: undo takes back the text box, then the stroke.
+        let undo = app.buttons["Undo"].firstMatch
+        undo.tap()
+        sleep(1)
+        undo.tap()
+        sleep(1)
+        page = try pixels("undone")
+        XCTAssertFalse(page.hasDarkLine(atX: 0.6, nearY: 0.4), "undo after switching tabs did nothing")
+        app.buttons["Redo"].firstMatch.tap()
+        sleep(1)
+        app.buttons["Redo"].firstMatch.tap()
+        sleep(3)  // autosave
+
+        // Killed and launched again (this time restoring): both tabs, the first one shown, its ink there.
+        app.terminate()
+        let again = XCUIApplication()
+        again.launch()
+        let restored = again.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'tab:'"))
+        XCTAssertTrue(again.buttons["Undo"].firstMatch.waitForExistence(timeout: 10), "the shown tab was not restored")
+        sleep(2)
+        XCTAssertEqual(restored.count, 2)
+        page = try pixels("after relaunch")
+        XCTAssertTrue(page.hasDarkLine(atX: 0.6, nearY: 0.4), "the restored tab lost its stroke")
+    }
+}
+
 /// Reads a screenshot's pixels.
 private struct Pixels {
     let width: Int, height: Int
@@ -152,5 +247,10 @@ private struct Pixels {
             if bytes[i] < 80 && bytes[i + 1] < 80 && bytes[i + 2] < 80 { return true }
         }
         return false
+    }
+
+    /// A dark pixel anywhere between x and toX (fractions of the screen), near y.
+    func hasDarkPixel(fromX x: CGFloat, toX: CGFloat, nearY y: CGFloat) -> Bool {
+        stride(from: x, through: toX, by: 1 / CGFloat(width)).contains { hasDarkLine(atX: $0, nearY: y) }
     }
 }

@@ -178,6 +178,23 @@ Decided:
   - **Export** saves a background tab of this window and then reads the files as before; only another window's notebook is refused.
   - **`LibraryModel.tabHost`** is the window (set by `LibraryView`). Without it (older tests) anything open is refused, as before.
   - **Tests**: `LibraryTabsTests` covers rename, folder move, trash, the shown tab, another window, a failed move and a tab that cannot be saved; 442 unit tests pass.
+- **Tabs, steps 5 and 6: restore on launch and the end-to-end test (built 2026-10-23; iPad check pending):**
+  - **What is kept**: `SavedTabs` has each tab's path **relative to the library root**, the notebook's id from `meta.json` and the remembered position, plus which tab was shown (nil = library).
+    - Paths are relative because the app's container path changes with every reinstall (every 7 days with the free account).
+    - At launch a notebook is taken at its path if the id there matches; otherwise it is searched for in the library by id (moved in the Files app). Missing notebooks, or ones another window has claimed, are left out and counted in a short alert.
+  - **Restored state**: all tabs come back released. The shown one is selected only once the app is active: the restore task waits on `UIApplication.applicationState`, because the view's `scenePhase` can be stale there and a change could be missed.
+  - **Where it is stored**: first in `@SceneStorage`, but the UI test showed that SwiftUI writes scene storage to disk only now and then. After the app was killed it held tabs from earlier (two tabs with the library shown).
+    - Now `TabStore` keeps the tabs in `UserDefaults`, written on every change, one entry per **window key** (the 10 newest windows are kept). `@SceneStorage("windowKey")` holds only that key, which never goes stale.
+    - When iPadOS forgets the windows (the app was swiped away in the app switcher), the first window of a launch takes the newest entry; later windows start empty.
+  - **UI tests**: they pass `-skipTabRestore YES`, so they start in the library.
+  - **Canvases**: after restoring a position, `EditorCoordinator.reloadVisibleCanvases()` gives the visible pages fresh canvases at the final zoom, because PencilKit does not draw a drawing set before its canvas was magnified.
+  - **Step 6, `TabsUITests`**:
+    - two notebooks as tabs with a stroke each, and text typed in a box while switching away;
+    - back in the first tab: its ink and text are there, the other tab's ink is not, and undo after the switch takes back the text and the stroke; redo;
+    - then the app is killed and launched again: both tabs are back, the first one shown, its ink there.
+
+    It passed 3 of 3 runs in the order that had failed before.
+  - 450 unit tests and all UI tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

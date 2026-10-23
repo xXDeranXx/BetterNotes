@@ -353,6 +353,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             scrollView.contentOffset.y = max(scrollView.contentOffset.y - topInset, -scrollView.adjustedContentInset.top)
         }
         coordinator.zoomDidChange(to: pdfView.scaleFactor)
+        coordinator.reloadVisibleCanvases()
     }
 
     /// The page in the middle of the visible area (below the toolbar) and that point on it,

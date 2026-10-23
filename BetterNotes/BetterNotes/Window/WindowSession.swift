@@ -33,7 +33,7 @@ final class WindowSession {
     /// in the editor's own tab. Called before the shown tab changes in any way (another tab,
     /// the library, closing), while the editor still exists.
     @ObservationIgnored var beforeLeavingTab: (() -> Void)?
-    @ObservationIgnored private let registry: OpenNotebookRegistry
+    @ObservationIgnored let registry: OpenNotebookRegistry
     @ObservationIgnored private var useCounter = 0
     /// The saves that release old tabs run one after another; tests wait for this.
     @ObservationIgnored private(set) var releaseTask: Task<Void, Never>?
@@ -123,6 +123,11 @@ final class WindowSession {
         for tab in tabs where tab.id != id {
             await closeTab(tab.id)
         }
+    }
+
+    /// A restored tab (see `restoreTabs`); its claim is already made.
+    func appendRestored(_ tab: NotebookTab) {
+        tabs.append(tab)
     }
 
     /// Moves a tab to `index` in the strip (dragging to reorder).

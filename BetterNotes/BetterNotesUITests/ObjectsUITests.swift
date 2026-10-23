@@ -5,6 +5,7 @@ final class ObjectsUITests: XCTestCase {
     @MainActor
     func testPasteSelectDeleteAndTypeText() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
         app.launch()
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
@@ -89,6 +90,7 @@ final class ObjectsUITests: XCTestCase {
     @MainActor
     func testLongPressPastesImageAndTextWhereTheFingerWas() throws {
         let app = XCUIApplication()
+        app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
         app.launch()
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()

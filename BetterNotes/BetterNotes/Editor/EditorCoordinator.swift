@@ -358,6 +358,21 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         show(notebook.drawing(for: pageID), in: canvas)
     }
 
+    /// After the editor jumped to a tab's remembered spot and zoom: pages that were already on
+    /// screen got their drawing before the zoom changed, and PencilKit does not draw a drawing
+    /// set before its canvas was magnified (see `overlayDidAppear`). Each visible page gets a
+    /// fresh canvas at the final zoom, as after an undo.
+    func reloadVisibleCanvases() {
+        for (pageID, overlay) in visibleOverlays {
+            applyRenderScale(to: overlay)
+            overlay.layoutIfNeeded()
+            if usesSystemToolPicker { toolPicker.removeObserver(overlay.canvas) }
+            let canvas = overlay.replaceCanvas()
+            if usesSystemToolPicker { toolPicker.addObserver(canvas) }
+            show(notebook.drawing(for: pageID), in: canvas)
+        }
+    }
+
     /// PencilKit has drawn the canvas's ink: a canvas that was swapped in after an undo now
     /// shows the right ink, so the old one that covered it can go. PencilKit reports this
     /// about 40 ms after the drawing was assigned (measured), but removing the old canvas in
