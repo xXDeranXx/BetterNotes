@@ -56,10 +56,16 @@ nonisolated enum LineDasher {
         return pieces
     }
 
-    /// One `PKStroke` through `points`, in the given ink and width. A piece of a single point
-    /// or of zero length still makes a dot, because the pen tip is round.
+    /// The point size to give a `PKStrokePoint` so that PencilKit's pen ink draws a line exactly
+    /// `width` points wide. Measured with offscreen renders (2026-10-23): the pen and monoline inks
+    /// draw `2 x (size - 2)`, whatever the force or speed, so width 3 came out 2 pt thin and width
+    /// 14 came out 24 pt thick, and the preview did not match the result.
+    static func pointSize(forWidth width: CGFloat) -> CGFloat { width / 2 + 2 }
+
+    /// One `PKStroke` through `points`, in the given ink, drawn `width` points wide. A piece of a
+    /// single point or of zero length still makes a dot, because the pen tip is round.
     static func stroke(through points: [CGPoint], ink: PKInk, width: CGFloat, start: Date = .now) -> PKStroke {
-        let size = CGSize(width: width, height: width)
+        let size = CGSize(width: pointSize(forWidth: width), height: pointSize(forWidth: width))
         var distance: CGFloat = 0
         var controlPoints: [PKStrokePoint] = []
         // PencilKit needs at least two distinct control points to show anything.
@@ -69,6 +75,19 @@ nonisolated enum LineDasher {
             controlPoints.append(PKStrokePoint(
                 location: location, timeOffset: TimeInterval(distance) / 1000, size: size, opacity: 1,
                 force: 1, azimuth: 0, altitude: .pi / 2))
+        }
+        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: controlPoints, creationDate: start))
+    }
+
+    /// One `PKStroke` whose width changes from point to point (the shape fill's rings).
+    static func stroke(through points: [WidePoint], ink: PKInk, start: Date = .now) -> PKStroke {
+        var distance: CGFloat = 0
+        let controlPoints = points.enumerated().map { index, point in
+            if index > 0 { distance += hypot(point.location.x - points[index - 1].location.x, point.location.y - points[index - 1].location.y) }
+            let size = pointSize(forWidth: point.width)
+            return PKStrokePoint(
+                location: point.location, timeOffset: TimeInterval(distance) / 1000, size: CGSize(width: size, height: size),
+                opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
         }
         return PKStroke(ink: ink, path: PKStrokePath(controlPoints: controlPoints, creationDate: start))
     }

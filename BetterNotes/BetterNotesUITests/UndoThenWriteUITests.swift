@@ -11,7 +11,9 @@ final class UndoThenWriteUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
         app.buttons["New Notebook"].firstMatch.tap()
-        app.buttons["Create"].firstMatch.tap()
+        let create = app.buttons["Create"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 10))  // the sheet can be slow in the simulator
+        create.tap()
         let undo = app.navigationBars.firstMatch.buttons["Undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 10))
         sleep(2)
@@ -55,7 +57,9 @@ final class ShapeToolUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
         app.buttons["New Notebook"].firstMatch.tap()
-        app.buttons["Create"].firstMatch.tap()
+        let create = app.buttons["Create"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 10))  // the sheet can be slow in the simulator
+        create.tap()
         let undo = app.navigationBars.firstMatch.buttons["Undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 10))
         sleep(2)

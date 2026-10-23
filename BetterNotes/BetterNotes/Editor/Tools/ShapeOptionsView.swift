@@ -52,10 +52,8 @@ struct ShapeOptionsView: View {
             .frame(height: 80)
             .overlay {
                 ZStack {
-                    if let fill = outline?.fill {
-                        polyline([fill])
-                            .stroke(color.opacity(ShapeGeometry.fillOpacity),
-                                    style: StrokeStyle(lineWidth: ShapeGeometry.fillWidth, lineCap: .round, lineJoin: .round))
+                    if let area = outline?.area {
+                        polyline([area]).fill(color.opacity(ShapeGeometry.fillOpacity))
                     }
                     polyline(outline?.pieces ?? [])
                         .stroke(color, style: StrokeStyle(lineWidth: CGFloat(shape.width), lineCap: .round, lineJoin: .round))

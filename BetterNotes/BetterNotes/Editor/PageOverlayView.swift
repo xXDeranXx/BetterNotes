@@ -149,11 +149,13 @@ final class PageOverlayView: UIView {
         outlinePreview.path = outline.cgPath
         outlinePreview.strokeColor = color.cgColor
         outlinePreview.lineWidth = width
+        // The fill's strokes cover exactly the inside up to the outline's middle, so the preview
+        // just paints that area.
         let fill = UIBezierPath()
-        if let points = shape?.fill { Self.add(points, to: fill) }
+        if let points = shape?.area { Self.add(points, to: fill) }
         fillPreview.path = fill.cgPath
-        fillPreview.strokeColor = color.withAlphaComponent(ShapeGeometry.fillOpacity).cgColor
-        fillPreview.lineWidth = ShapeGeometry.fillWidth
+        fillPreview.strokeColor = nil
+        fillPreview.fillColor = color.withAlphaComponent(ShapeGeometry.fillOpacity).cgColor
     }
 
     private static func add(_ points: [CGPoint], to path: UIBezierPath) {

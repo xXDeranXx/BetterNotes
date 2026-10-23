@@ -75,21 +75,48 @@ struct ShapeGeometryTests {
         #expect(outline.fill == nil)
     }
 
-    @Test func theFillStaysInsideTheShapeShrunkByHalfItsWidth() throws {
-        let inset = ShapeGeometry.fillWidth / 2
+    /// True when `point` is inside the closed convex `polygon` or within `tolerance` of it.
+    private func isInside(_ point: CGPoint, _ polygon: [CGPoint], tolerance: CGFloat = 0.001) -> Bool {
+        var sign: CGFloat = 0
+        for index in 1..<polygon.count {
+            let a = polygon[index - 1], b = polygon[index]
+            let length = hypot(b.x - a.x, b.y - a.y)
+            guard length > 0 else { continue }
+            let side = ((b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)) / length
+            if abs(side) <= tolerance { continue }
+            if sign == 0 { sign = side > 0 ? 1 : -1 } else if (side > 0 ? 1 : -1) != sign { return false }
+        }
+        return true
+    }
+
+    @Test func everyFillRingStaysInsideTheOutlinesMiddle() throws {
         let start = CGPoint(x: 20, y: 30), end = CGPoint(x: 220, y: 180)
         for kind in [ShapeKind.rectangle, .ellipse, .triangle] {
-            let fill = try #require(ShapeGeometry.fillZigzag(kind, from: start, to: end))
-            let inner = try #require(ShapeGeometry.insetPolygon(kind, from: start, to: end, by: inset))
+            let fill = try #require(ShapeGeometry.fillRings(kind, from: start, to: end))
             for point in fill {
-                let span = try #require(ShapeGeometry.span(of: inner, atY: point.y))
-                #expect(point.x >= span.lowerBound - 0.001 && point.x <= span.upperBound + 0.001)
+                // Half the ring's width in from the outline, its edge is still inside.
+                let inner = try #require(ShapeGeometry.insetPolygon(kind, from: start, to: end, by: point.width / 2 - 0.001))
+                #expect(isInside(point.location, inner, tolerance: 0.05), "\(kind) \(point)")
             }
-            // Rows cover the inside from top to bottom without gaps wider than the fill.
-            let ys = Array(Set(fill.map(\.y))).sorted()
-            #expect(zip(ys, ys.dropFirst()).allSatisfy { $1 - $0 <= ShapeGeometry.fillRowSpacing + 0.001 })
-            #expect(abs(ys.first! - inner.map(\.y).min()!) < 0.001 && abs(ys.last! - inner.map(\.y).max()!) < 0.001)
         }
+    }
+
+    @Test func fillRingsStartThinAtTheEdgeAndOverlapEnoughThatNoSeamShows() throws {
+        let start = CGPoint.zero, end = CGPoint(x: 100, y: 37)
+        let deepest = ShapeGeometry.innerRadius(.rectangle, from: start, to: end)
+        #expect(deepest == 18.5)
+        let fill = try #require(ShapeGeometry.fillRings(.rectangle, from: start, to: end))
+        // Each ring starts at its top-left corner, where x == y == the ring's inset.
+        var rings: [WidePoint] = []
+        for point in fill where abs(point.location.x - point.location.y) < 0.0001 && rings.last != point { rings.append(point) }
+        #expect(rings.first == WidePoint(location: CGPoint(x: 0.75, y: 0.75), width: ShapeGeometry.edgeRingWidth))
+        for (outer, inner) in zip(rings, rings.dropFirst()) {
+            // Measured: seams appear unless rings are at most a third of their width apart.
+            #expect(inner.location.x - outer.location.x <= max(outer.width, inner.width) / 3 + 0.001)
+            #expect(inner.location.x - inner.width / 2 >= -0.001)  // never past the outline's middle
+        }
+        #expect(rings.contains { $0.width == ShapeGeometry.innerRingWidth })
+        #expect(deepest - rings.last!.location.x < 0.02)
     }
 
     @Test func anInsetTriangleKeepsTheSameDistanceFromEverySide() throws {
@@ -107,11 +134,11 @@ struct ShapeGeometryTests {
         }
     }
 
-    @Test func aShapeTooSmallForTheFillHasOnlyItsOutline() throws {
+    @Test func aNarrowShapeIsStillFilled() throws {
         let outline = try #require(ShapeGeometry.outline(
             .rectangle, from: .zero, to: CGPoint(x: 6, y: 40), style: .solid, width: 3, filled: true))
-        #expect(outline.fill == nil)
-        #expect(!outline.pieces.isEmpty)
+        #expect(outline.fill != nil)
+        #expect(outline.area?.count == 5)
     }
 }
 
@@ -128,6 +155,43 @@ struct ShapeRenderingTests {
         }
         #expect(pixel(image, 100, 100).a == 0)  // not filled
         #expect(pixel(image, 56, 56).a == 0)  // the corner is not rounded inward
+    }
+
+    /// How thick a horizontal line through x = 100 is, in points (rendered at 4 pixels per point).
+    private func thickness(_ strokes: [PKStroke]) -> CGFloat {
+        var image = UIImage()
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            image = PKDrawing(strokes: strokes).image(from: CGRect(x: 0, y: 0, width: 200, height: 200), scale: 4)
+        }
+        var coverage = 0
+        for y in 0..<800 { coverage += pixel(image, 400, y).a }
+        return CGFloat(coverage) / 255 / 4
+    }
+
+    @Test func aShapeIsAsThickAsItsWidthSaysLikeThePreview() throws {
+        // PencilKit's pen draws 2 x (size - 2) for a point size; before the correction width 3
+        // came out 2 pt and width 14 came out 24 pt, unlike the preview.
+        for width in [1.0, 3, 8, 14, 25] as [CGFloat] {
+            let outline = try #require(ShapeGeometry.outline(
+                .line, from: CGPoint(x: 20, y: 100), to: CGPoint(x: 180, y: 100), style: .solid, width: width, filled: false))
+            let measured = thickness(ShapeGeometry.strokes(for: outline, color: .black, width: width))
+            #expect(abs(measured - width) < 0.15, "width \(width) drew \(measured)")
+        }
+    }
+
+    @Test func theFillReachesTheTipOfAThinTriangleAndTheEndsOfAFlatEllipse() throws {
+        let triangle = try #require(ShapeGeometry.outline(
+            .triangle, from: CGPoint(x: 80, y: 10), to: CGPoint(x: 120, y: 190), style: .solid, width: 1, filled: true))
+        var image = render(ShapeGeometry.strokes(for: triangle, color: .blue, width: 1))
+        for y in [16, 20, 30, 60, 120] {  // down the middle from just below the tip
+            #expect(pixel(image, 100, y).a > 40, "triangle at y \(y)")
+        }
+        let ellipse = try #require(ShapeGeometry.outline(
+            .ellipse, from: CGPoint(x: 10, y: 85), to: CGPoint(x: 190, y: 115), style: .solid, width: 1, filled: true))
+        image = render(ShapeGeometry.strokes(for: ellipse, color: .blue, width: 1))
+        for (x, y) in [(13, 100), (187, 100), (30, 93), (170, 107), (100, 87)] {
+            #expect(pixel(image, x, y).a > 40, "ellipse at \(x), \(y)")
+        }
     }
 
     @Test func dashesAndDotsShowAsSeparateMarksWithPenInk() throws {

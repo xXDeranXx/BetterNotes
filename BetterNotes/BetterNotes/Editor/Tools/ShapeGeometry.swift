@@ -34,8 +34,17 @@ nonisolated enum ShapeKind: String, Codable, CaseIterable, Sendable {
 nonisolated struct ShapeOutline: Equatable, Sendable {
     /// Each piece becomes one stroke: one for solid, many for dashed or dotted.
     var pieces: [[CGPoint]]
-    /// A single stroke that zigzags across the inside, or nil (not filled, a line, or too small).
-    var fill: [CGPoint]?
+    /// A single stroke that covers the inside in rings, or nil (not filled or a line). Each
+    /// point has its own width, because the rings at the edge are thinner than inside.
+    var fill: [WidePoint]?
+    /// The closed outline of a filled shape, for the preview, which simply paints this area.
+    var area: [CGPoint]?
+}
+
+/// A stroke point with its own drawn width.
+nonisolated struct WidePoint: Equatable, Sendable {
+    var location: CGPoint
+    var width: CGFloat
 }
 
 /// Pure geometry for the shape tool, tested without a screen.
@@ -47,9 +56,12 @@ nonisolated struct ShapeOutline: Equatable, Sendable {
 nonisolated enum ShapeGeometry {
     /// Points along an ellipse; enough that the smoothing makes it round, not a polygon.
     static let ellipseSegments = 72
-    /// The fill is one wide stroke, laid in rows that overlap a little so no gaps show.
-    static let fillWidth: CGFloat = 8
-    static let fillRowSpacing: CGFloat = 6
+    /// The fill is one stroke laid in rings that follow the edge inward (see `fillRings`): thin
+    /// rings along the edge, so the fill reaches into corners, then wide rings inside.
+    static let edgeRingWidth: CGFloat = 1.5
+    static let innerRingWidth: CGFloat = 6
+    /// How far in the thin rings go; the first wide ring starts here, its outer edge on the outline.
+    static let edgeBand: CGFloat = 3
     /// The fill is the shape's color at this opacity, so the outline and writing on top stay visible.
     static let fillOpacity: CGFloat = 0.25
     /// A drag shorter than this (a tap) draws nothing.
@@ -94,8 +106,9 @@ nonisolated enum ShapeGeometry {
         let points = path(kind, from: start, to: end)
         let sharp = kind != .ellipse  // an ellipse has no corners
         let pieces = LineDasher.pieces(of: points, style: style, width: width).map { sharp ? sharpened($0) : $0 }
-        let fill = filled && kind.canBeFilled ? fillZigzag(kind, from: start, to: end) : nil
-        return ShapeOutline(pieces: pieces, fill: fill)
+        let isFilled = filled && kind.canBeFilled
+        return ShapeOutline(pieces: pieces, fill: isFilled ? fillRings(kind, from: start, to: end) : nil,
+                            area: isFilled ? points : nil)
     }
 
     /// Repeats every point three times, so PencilKit's smoothing keeps corners sharp and
@@ -106,29 +119,50 @@ nonisolated enum ShapeGeometry {
 
     // MARK: Fill
 
-    /// One zigzag through the inside: rows from top to bottom, alternating direction, each row
-    /// clipped to the shape shrunk by half the fill width, so the fill's edge ends under the
-    /// outline instead of sticking out. All shapes are convex, so the short connections
-    /// between rows stay inside too. Nil when the shape is too small for a row.
-    static func fillZigzag(_ kind: ShapeKind, from start: CGPoint, to end: CGPoint) -> [CGPoint]? {
+    /// Rings through the inside, joined into one stroke, down to the middle: every ring is the
+    /// outline shrunk by some distance, so the fill reaches into every corner (rows of a wide
+    /// stroke with round ends left the corners and the ends of ellipses empty, seen on the iPad).
+    ///
+    /// Measured with offscreen renders: PencilKit does not merge the overlapping parts of one
+    /// translucent stroke perfectly; rings show lighter seams unless they overlap a lot (spacing
+    /// at most a third of their width). So the thin rings at the edge (1.5 wide, 0.5 apart) give
+    /// way to wide rings inside (6 wide, 2 apart), which keeps the point count low. The outermost
+    /// edge ends exactly at the outline's middle. Nil when there is no inside (a line, a flat box).
+    static func fillRings(_ kind: ShapeKind, from start: CGPoint, to end: CGPoint) -> [WidePoint]? {
         guard kind.canBeFilled else { return nil }
-        let inset = fillWidth / 2
-        guard let polygon = insetPolygon(kind, from: start, to: end, by: inset) else { return nil }
-        let top = polygon.map(\.y).min()!, bottom = polygon.map(\.y).max()!
-        var rows: [CGFloat] = []
-        var y = top
-        while y < bottom { rows.append(y); y += fillRowSpacing }
-        rows.append(bottom)
-
-        var points: [CGPoint] = []
-        var leftToRight = true
-        for rowY in rows {
-            guard let span = span(of: polygon, atY: rowY) else { continue }
-            let row = [CGPoint(x: span.lowerBound, y: rowY), CGPoint(x: span.upperBound, y: rowY)]
-            points += leftToRight ? row : row.reversed()
-            leftToRight.toggle()
+        let deepest = innerRadius(kind, from: start, to: end)
+        guard deepest > 0 else { return nil }
+        var rings: [(inset: CGFloat, width: CGFloat)] = []
+        var inset = edgeRingWidth / 2
+        while inset < min(edgeBand, deepest) { rings.append((inset, edgeRingWidth)); inset += edgeRingWidth / 3 }
+        inset = edgeBand
+        while inset < deepest { rings.append((inset, innerRingWidth)); inset += innerRingWidth / 3 }
+        // A last ring at the middle, so no gap is left there.
+        if let last = rings.last, deepest - last.inset > 0.02 {
+            rings.append((deepest - 0.01, min(last.width, 2 * (deepest - 0.01))))
+        } else if rings.isEmpty {
+            rings.append((deepest - 0.01, edgeRingWidth))
         }
-        return points.isEmpty ? nil : sharpened(points)
+        let sharp = kind != .ellipse
+        let points = rings.flatMap { ring -> [WidePoint] in
+            guard let polygon = insetPolygon(kind, from: start, to: end, by: ring.inset) else { return [] }
+            return (sharp ? sharpened(polygon) : polygon).map { WidePoint(location: $0, width: ring.width) }
+        }
+        return points.isEmpty ? nil : points
+    }
+
+    /// How far the shape can be shrunk before nothing is left: half the smaller side of the box
+    /// for a rectangle and an ellipse, the radius of the inscribed circle for a triangle.
+    static func innerRadius(_ kind: ShapeKind, from start: CGPoint, to end: CGPoint) -> CGFloat {
+        let width = abs(end.x - start.x), height = abs(end.y - start.y)
+        switch kind {
+        case .line: return 0
+        case .rectangle, .ellipse: return min(width, height) / 2
+        case .triangle:
+            let side = hypot(width / 2, height)  // the two slanted sides
+            let perimeter = width + 2 * side
+            return perimeter > 0 ? width * height / perimeter : 0  // area / half the perimeter
+        }
     }
 
     /// The shape shrunk by `inset` on every side, as a closed convex polygon, or nil when
@@ -163,33 +197,16 @@ nonisolated enum ShapeGeometry {
         }
     }
 
-    /// Where the horizontal line at `y` enters and leaves a closed convex polygon.
-    static func span(of polygon: [CGPoint], atY y: CGFloat) -> ClosedRange<CGFloat>? {
-        var xs: [CGFloat] = []
-        for index in 1..<polygon.count {
-            let p = polygon[index - 1], q = polygon[index]
-            let low = min(p.y, q.y), high = max(p.y, q.y)
-            guard y >= low, y <= high else { continue }
-            if high - low < 0.0001 {
-                xs += [p.x, q.x]  // a horizontal edge at exactly this height
-            } else {
-                xs.append(p.x + (y - p.y) / (q.y - p.y) * (q.x - p.x))
-            }
-        }
-        guard let low = xs.min(), let high = xs.max() else { return nil }
-        return low...high
-    }
-
     // MARK: Strokes
 
     /// The strokes for a shape: the fill first (so it lies under the outline), then the outline.
     /// Shapes use the pen ink: its width stays even with these fixed points, and unlike the
-    /// monoline ink it allows wide lines (monoline stops at 4 pt).
+    /// monoline tool it allows wide lines (the monoline tool stops at 4 pt).
     static func strokes(for shape: ShapeOutline, color: UIColor, width: CGFloat) -> [PKStroke] {
         var strokes: [PKStroke] = []
         if let fill = shape.fill {
             let ink = PKInk(.pen, color: color.withAlphaComponent(fillOpacity))
-            strokes.append(LineDasher.stroke(through: fill, ink: ink, width: fillWidth))
+            strokes.append(LineDasher.stroke(through: fill, ink: ink))
         }
         let ink = PKInk(.pen, color: color)
         strokes += shape.pieces.map { LineDasher.stroke(through: $0, ink: ink, width: width) }
