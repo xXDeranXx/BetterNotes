@@ -216,9 +216,15 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
 
     // MARK: Model → canvas
 
+    /// Undo and redo change the ink from outside. The canvas is replaced by a fresh one
+    /// before it gets the new drawing (see `PageOverlayView.replaceCanvas`).
     private func modelDrawingChanged(_ pageID: UUID) {
         guard !isSyncing, let overlay = visibleOverlays[pageID] else { return }
-        show(notebook.drawing(for: pageID), in: overlay.canvas)
+        let old = overlay.canvas
+        if usesSystemToolPicker { toolPicker.removeObserver(old) }
+        let canvas = overlay.replaceCanvas()
+        if usesSystemToolPicker { toolPicker.addObserver(canvas) }
+        show(notebook.drawing(for: pageID), in: canvas)
     }
 
     // MARK: Canvas → model

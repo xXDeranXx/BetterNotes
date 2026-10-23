@@ -90,6 +90,29 @@ struct EditorCoordinatorTests {
         #expect(overlay.canvas.drawing.strokes.count == 1)
     }
 
+    @Test func undoGivesThePageAFreshCanvasWithTheSameSetup() throws {
+        let setup = try makeSetup()
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.canvas.delegate = setup.coordinator
+        setup.coordinator.overlayDidAppear(overlay)
+        var settings = ToolSettings()
+        settings.selected = .pen(.fountainPen)
+        setup.coordinator.apply(settings: settings, isRulerActive: true)
+        userDraws(sampleDrawing(), on: overlay, using: setup.coordinator)
+        let before = overlay.canvas
+
+        setup.notebook.undoManager.undo()
+
+        let after = overlay.canvas
+        #expect(after !== before)  // PencilKit's own copy of the strokes is not reused
+        #expect(before.superview == nil && after.superview === overlay)
+        #expect(after.delegate === setup.coordinator)
+        #expect((after.tool as? PKInkingTool)?.inkType == .fountainPen)
+        #expect(after.isRulerActive)
+        #expect(after.zoomScale == before.zoomScale && after.bounds == before.bounds)
+        #expect(after.drawing.strokes.isEmpty)
+    }
+
     @Test func aCanvasThatAppearsLaterShowsChangesMadeWhileItWasOffScreen() throws {
         let setup = try makeSetup()
         let overlay = PageOverlayView(pageID: setup.pageA)

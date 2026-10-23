@@ -36,24 +36,12 @@ final class PassthroughView: UIView {
 final class PageOverlayView: UIView {
     let pageID: UUID
     let objectsLayer = PassthroughView()
-    let canvas = PageCanvasView()
+    private(set) var canvas = PageOverlayView.makeCanvas()
     let previewLayer = PassthroughView()
 
     init(pageID: UUID) {
         self.pageID = pageID
         super.init(frame: .zero)
-
-        canvas.backgroundColor = .clear
-        canvas.isOpaque = false
-        // Pages stay white in dark mode, so ink must be drawn as on white paper.
-        canvas.overrideUserInterfaceStyle = .light
-        canvas.isScrollEnabled = false
-        canvas.contentInsetAdjustmentBehavior = .never
-        #if targetEnvironment(simulator)
-        canvas.drawingPolicy = .anyInput  // the simulator has no Pencil
-        #else
-        canvas.drawingPolicy = .pencilOnly  // the Pencil writes, fingers scroll and zoom
-        #endif
 
         for layer in [objectsLayer, canvas, previewLayer] as [UIView] {
             layer.frame = bounds
@@ -66,6 +54,46 @@ final class PageOverlayView: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    private static func makeCanvas() -> PageCanvasView {
+        let canvas = PageCanvasView()
+        canvas.backgroundColor = .clear
+        canvas.isOpaque = false
+        // Pages stay white in dark mode, so ink must be drawn as on white paper.
+        canvas.overrideUserInterfaceStyle = .light
+        canvas.isScrollEnabled = false
+        canvas.contentInsetAdjustmentBehavior = .never
+        #if targetEnvironment(simulator)
+        canvas.drawingPolicy = .anyInput  // the simulator has no Pencil
+        #else
+        canvas.drawingPolicy = .pencilOnly  // the Pencil writes, fingers scroll and zoom
+        #endif
+        return canvas
+    }
+
+    /// Swaps the canvas for a new, empty one at the same place and returns it.
+    ///
+    /// Needed when the page's ink changes from outside (undo, redo): assigning `drawing` to a
+    /// canvas that the user has drawn on does not fully reset PencilKit's own copy of the
+    /// strokes. The canvas reports the new drawing, but the next stroke is added to the old
+    /// one, so an undone stroke came back (measured with a UI test in the simulator, also on
+    /// the code of milestone 5; reported on the iPad). A fresh canvas has no such history.
+    @discardableResult
+    func replaceCanvas() -> PageCanvasView {
+        let old = canvas
+        let new = Self.makeCanvas()
+        new.delegate = old.delegate
+        new.tool = old.tool
+        new.isRulerActive = old.isRulerActive
+        new.drawingPolicy = old.drawingPolicy
+        old.delegate = nil
+        insertSubview(new, aboveSubview: old)
+        old.removeFromSuperview()
+        canvas = new
+        setNeedsLayout()
+        layoutIfNeeded()  // size and zoom first, then the drawing (SPEC, M2 lesson)
+        return new
+    }
 
     /// How much sharper than the page the canvas renders (1 = the page's own size).
     /// PencilKit draws ink at the resolution of its scroll view's `zoomScale`, and ignores
