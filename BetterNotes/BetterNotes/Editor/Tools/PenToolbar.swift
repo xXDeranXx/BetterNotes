@@ -1,5 +1,6 @@
 import PencilKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The toolbar floating over the page (SPEC, M7a): pens, eraser, lasso, ruler. It sits at the
 /// top or at a side of the editor, can be collapsed to one small button, and follows the
@@ -13,7 +14,7 @@ struct PenToolbar: View {
     var availableLength: CGFloat = .infinity
     @State private var popover: Popover?
 
-    private enum Popover: Hashable { case pen(PenKind), eraser, shape, settings }
+    private enum Popover: Hashable { case pen(PenKind), eraser, shape, text, settings }
 
     private var isVertical: Bool { tools.settings.toolbarPosition != .top }
 
@@ -49,6 +50,7 @@ struct PenToolbar: View {
         case .eraser: "eraser"
         case .lasso: "lasso"
         case .select: Self.selectSymbol
+        case .text: "character.textbox"
         case .shape: tools.settings.shape.kind.symbol
         }
     }
@@ -57,6 +59,7 @@ struct PenToolbar: View {
         switch tools.settings.selected {
         case .pen: Color(hex: tools.currentPenSetting.colorHex)
         case .shape: Color(hex: tools.settings.shape.colorHex)
+        case .text: Color(hex: tools.settings.textColorHex)
         case .eraser, .lasso, .select: .primary
         }
     }
@@ -122,10 +125,7 @@ struct PenToolbar: View {
             // PencilKit's lasso only selects ink, so images and text boxes have their own tool.
             toolButton(.select, symbol: Self.selectSymbol, label: "Select images and text")
             shapeButton
-            // Text boxes come with milestone 8 (objects on pages).
-            icon("character.textbox", isSelected: false)
-                .opacity(0.35)
-                .accessibilityLabel("Text box (coming later)")
+            textButton
             imageMenu
             Button {
                 tools.isRulerActive.toggle()
@@ -210,18 +210,49 @@ struct PenToolbar: View {
             .accessibilityLabel(label)
     }
 
+    /// Tapping selects the text tool (tap the page to place a box); tapping it again opens the
+    /// font size and color for new boxes.
+    private var textButton: some View {
+        let isSelected = tools.settings.selected == .text
+        return Button {
+            if isSelected { popover = .text } else { tools.select(.text) }
+        } label: {
+            icon("character.textbox", isSelected: isSelected, tint: Color(hex: tools.settings.textColorHex))
+        }
+        .accessibilityLabel("Text box")
+        .popover(isPresented: binding(for: .text)) { TextOptionsView(tools: tools) }
+    }
+
     /// Puts an image on the page on screen (M8).
     private var imageMenu: some View {
         Menu {
             Button("Photos", systemImage: "photo.on.rectangle") { onInsertImage(.photos) }
             Button("Files", systemImage: "folder") { onInsertImage(.files) }
-            // Not disabled when the clipboard is empty: the menu is built before it opens, so
-            // that state could be out of date. Pasting explains it instead.
-            Button("Paste", systemImage: "doc.on.clipboard") { onInsertImage(.clipboard) }
+            // The system's own Paste button: reading the clipboard through it never shows the
+            // "Allow Paste?" question (a plain button that reads the clipboard does). It is
+            // greyed out by the system when there is no image to paste.
+            PasteButton(supportedContentTypes: [.image]) { providers in
+                guard let provider = providers.first else { return }
+                Self.loadImageData(from: provider) { data in
+                    Task { @MainActor in
+                        if let data { onInsertImage(.pasted(data)) } else { onInsertImage(.unreadablePaste) }
+                    }
+                }
+            }
         } label: {
             icon("photo", isSelected: false)
         }
         .accessibilityLabel("Insert image")
+    }
+
+    /// The pasted image's bytes, preferring PNG (screenshots stay crisp), then JPEG, then any image.
+    private nonisolated static func loadImageData(from provider: NSItemProvider, completion: @escaping @Sendable (Data?) -> Void) {
+        let types = [UTType.png, .jpeg, .heic, .image].map(\.identifier)
+        guard let type = types.first(where: { provider.hasItemConformingToTypeIdentifier($0) }) else {
+            completion(nil)
+            return
+        }
+        _ = provider.loadDataRepresentation(forTypeIdentifier: type) { data, _ in completion(data) }
     }
 
     /// Saved pens: one tap switches to that exact pen.

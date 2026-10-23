@@ -103,6 +103,27 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         // A long press on an object switches to the select tool until nothing is selected.
         coordinator.onLongPressObject = { [weak self] in self?.tools?.beginTemporaryObjectSelection() }
         coordinator.onSelectionCleared = { [weak self] in self?.tools?.endTemporaryObjectSelection() }
+        // The text view had the keyboard focus; give it back to the editor (Cmd+Z, tool picker).
+        coordinator.onTextEditingEnded = { [weak self] in
+            guard let self, self.view.window != nil else { return }
+            self.view.becomeFirstResponder()
+        }
+        // Text being typed is put into the model before the app leaves the screen, so the
+        // save on the way to the background includes it.
+        NotificationCenter.default.addObserver(forName: UIScene.willDeactivateNotification, object: nil, queue: .main) {
+            [weak self] note in
+            // Compared by identity only (the scene object itself stays on its own thread).
+            let scene = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                guard let self, scene == self.view.window?.windowScene.map(ObjectIdentifier.init) else { return }  // only this window
+                self.coordinator.endTextEditing()
+            }
+        }
+        NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) {
+            [weak self] note in
+            let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+            MainActor.assumeIsolated { self?.keepTextAboveKeyboard(keyboardFrame: frame) }
+        }
 
         pdfView.frame = view.bounds
         pdfView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -199,6 +220,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        coordinator.endTextEditing()
         coordinator.toolPicker.setVisible(false, forFirstResponder: view)
     }
 
@@ -265,6 +287,19 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         if squeeze.phase == .ended {
             onPencilAction?(UIPencilInteraction.preferredSqueezeAction, squeeze.hoverPose.map { $0.location })
         }
+    }
+
+    /// Scrolls the page up when the on-screen keyboard would cover the text box being typed in.
+    private func keepTextAboveKeyboard(keyboardFrame: CGRect?) {
+        guard let keyboardFrame, let textView = coordinator.editingTextView, let window = view.window,
+            let scrollView = pdfScrollView
+        else { return }
+        let box = textView.convert(textView.bounds, to: window)
+        let overlap = box.maxY + 24 - keyboardFrame.minY
+        guard overlap > 0 else { return }
+        var offset = scrollView.contentOffset
+        offset.y += overlap
+        scrollView.setContentOffset(offset, animated: true)
     }
 
     // MARK: Inserting images (M8)

@@ -120,6 +120,7 @@ final class PageOverlayView: UIView {
         new.isRulerActive = old.isRulerActive
         new.drawingPolicy = old.drawingPolicy
         new.drawingGestureRecognizer.isEnabled = old.drawingGestureRecognizer.isEnabled  // off while drawing shapes
+        new.isUserInteractionEnabled = old.isUserInteractionEnabled  // off with the select and text tools
         old.delegate = nil
         old.isUserInteractionEnabled = false
         insertSubview(new, belowSubview: old)
@@ -314,6 +315,9 @@ final class PageOverlayView: UIView {
     let objectGesture = ObjectDragGesture()
     /// A finger held on an object selects it with any tool.
     let objectLongPress = UILongPressGestureRecognizer()
+    /// A tap with the text tool places or edits a text box (Pencil or finger). It does not
+    /// take the touches away from a text box being typed in.
+    let textTap = PageTapGesture()
     /// The dashed frame and the handles around the selected object, above the ink.
     private let selectionOutline = CAShapeLayer()
     private let selectionHandles = CAShapeLayer()
@@ -326,6 +330,10 @@ final class PageOverlayView: UIView {
         objectLongPress.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]  // fingers
         objectLongPress.delegate = self
         addGestureRecognizer(objectLongPress)
+        textTap.isEnabled = false
+        textTap.cancelsTouchesInView = false
+        textTap.delegate = self
+        addGestureRecognizer(textTap)
         selectionOutline.fillColor = nil
         selectionOutline.strokeColor = UIColor.systemBlue.cgColor
         selectionHandles.fillColor = UIColor.white.cgColor
@@ -482,6 +490,52 @@ final class ObjectDragGesture: UIGestureRecognizer {
     }
 }
 
+/// A tap on the page (Pencil or finger), for the text tool. UIKit's own tap recognizer never
+/// fired on the page in the simulator (PDFView's and PencilKit's gestures win over it), so this
+/// one is written like the drag gestures above: it watches one touch and recognizes on lift if
+/// the touch stayed put. A moving finger fails it, so the page still scrolls.
+final class PageTapGesture: UIGestureRecognizer {
+    private var trackedTouch: UITouch?
+    private var startOnGlass: CGPoint = .zero
+    private(set) var location: CGPoint = .zero
+
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        allowedTouchTypes = [UITouch.TouchType.pencil, .direct].map { NSNumber(value: $0.rawValue) }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard trackedTouch == nil, touches.count == 1, let touch = touches.first else {
+            state = .failed  // two fingers: a pinch or an undo tap
+            return
+        }
+        trackedTouch = touch
+        startOnGlass = touch.location(in: nil)
+        location = touch.location(in: view)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        let glass = trackedTouch.location(in: nil)
+        if hypot(glass.x - startOnGlass.x, glass.y - startOnGlass.y) > 10 { state = .failed }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        location = trackedTouch.location(in: view)
+        state = .ended  // a discrete gesture: recognized in one step
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .failed
+    }
+
+    override func reset() {
+        super.reset()
+        trackedTouch = nil
+    }
+}
+
 /// Listens to the Pencil while a pen writes, for "hold to snap" (M7). It runs **at the same
 /// time** as PencilKit's own drawing gesture: normally only one gesture recognizer may handle
 /// a touch, but the overlay's delegate method `shouldRecognizeSimultaneouslyWith` lets this one
@@ -603,7 +657,8 @@ extension PageOverlayView: UIGestureRecognizerDelegate {
         _ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool {
         // Compared by identity: PencilKit may attach its gesture to an inner view of the canvas.
-        if gestureRecognizer === objectLongPress { return true }  // never stops scrolling or zooming
+        // Never stop scrolling or zooming, and never lose a tap to PDFView's own tap gestures.
+        if gestureRecognizer === objectLongPress || gestureRecognizer === textTap { return true }
         return gestureRecognizer === holdGesture
             && (other === canvas.drawingGestureRecognizer || other === retiredCanvas?.drawingGestureRecognizer)
     }

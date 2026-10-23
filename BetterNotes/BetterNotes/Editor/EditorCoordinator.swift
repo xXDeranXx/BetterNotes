@@ -42,6 +42,16 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     /// The editor switches tools for these (a long press on an object; the selection ended).
     var onLongPressObject: (() -> Void)?
     var onSelectionCleared: (() -> Void)?
+    /// True while the text tool is on: a tap places or edits a text box (M8).
+    private(set) var placesText = false
+    /// Font size and color for new text boxes, from the toolbar.
+    private(set) var textFontSize = TextObject.defaultFontSize
+    private(set) var textColorHex = "#000000"
+    /// The text box being typed in, if any (see `EditorCoordinator+Text`).
+    var textEditing: TextEditing?
+    /// Typing ended: the editor takes the keyboard focus back (Cmd+Z, the system tool picker).
+    var onTextEditingEnded: (() -> Void)?
+    private var lastSelectedTool: ToolChoice?
 
     /// What `configure` needs from the settings; selecting a tool or changing its color or
     /// width changes it, undo does not.
@@ -133,6 +143,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
             return self.objectTouchBegan(at: point, on: overlay)
         }
         overlay.objectLongPress.addTarget(self, action: #selector(objectLongPressed(_:)))
+        overlay.textTap.addTarget(self, action: #selector(textTapped(_:)))
         overlay.addInteraction(UIEditMenuInteraction(delegate: self))
         return overlay
     }
@@ -245,7 +256,13 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         self.isRulerActive = isRulerActive
         shape = settings.selected == .shape && !settings.usesSystemToolPicker ? settings.shape : nil
         selectsObjects = settings.selected == .select && !settings.usesSystemToolPicker
+        placesText = settings.selected == .text && !settings.usesSystemToolPicker
+        textFontSize = settings.textFontSize
+        textColorHex = settings.textColorHex
         favoriteColors = settings.favoriteColors
+        // Another tool was picked: finish the text box being typed in.
+        if settings.selected != lastSelectedTool { endTextEditing() }
+        lastSelectedTool = settings.selected
         if !selectsObjects { clearSelection(notify: false) }
         snapsShapes = settings.holdToSnapShapes
         smoothsCurves = settings.holdToSmoothCurves
@@ -271,6 +288,11 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         if canvas.drawingGestureRecognizer.isEnabled == blocksInk { canvas.drawingGestureRecognizer.isEnabled = !blocksInk }
         overlay.shapeGesture.isEnabled = drawsShapes
         overlay.objectGesture.isEnabled = selectsObjects
+        overlay.textTap.isEnabled = placesText
+        // With the select and text tools the canvas takes no touches at all: PencilKit's own
+        // tap handling showed a Paste bubble and took the keyboard from a new text box.
+        let canvasTakesTouches = !(selectsObjects || placesText)
+        if canvas.isUserInteractionEnabled != canvasTakesTouches { canvas.isUserInteractionEnabled = canvasTakesTouches }
         // A finger long press selects objects with the other tools; not while fingers draw.
         overlay.objectLongPress.isEnabled = !selectsObjects && !allowsFingerDrawing && !usesSystemToolPicker
         #if targetEnvironment(simulator)
@@ -293,9 +315,10 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     }
 
     /// PencilKit must not draw while the shape or the select tool reads the touches.
-    private var blocksInk: Bool { shape != nil || selectsObjects }
+    private var blocksInk: Bool { shape != nil || selectsObjects || placesText }
 
     func overlayDidDisappear(_ overlay: PageOverlayView) {
+        if textEditing?.pageID == overlay.pageID { endTextEditing() }  // before the page is forgotten
         visibleOverlays[overlay.pageID] = nil
         if selection?.pageID == overlay.pageID { clearSelection(notify: true) }
         if usesSystemToolPicker { toolPicker.removeObserver(overlay.canvas) }

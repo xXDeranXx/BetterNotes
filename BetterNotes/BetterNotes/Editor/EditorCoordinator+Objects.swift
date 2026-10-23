@@ -73,6 +73,10 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
     /// A touch began on a page while the select tool is on: does it grab a handle or an object?
     /// A touch elsewhere ends the selection and lets the page scroll (finger) or do nothing (Pencil).
     func objectTouchBegan(at point: CGPoint, on overlay: PageOverlayView) -> Bool {
+        if let editing = textEditing, editing.pageID == overlay.pageID, let view = editing.view, view.frame.contains(point) {
+            return false  // a touch in the box being typed in belongs to the text view
+        }
+        endTextEditing()
         let objects = notebook.objects(on: overlay.pageID)
         let reach = Self.handleReach / max(zoom, 0.01)
         if let selection, selection.pageID == overlay.pageID,
@@ -191,11 +195,6 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
             },
         ]
         return UIMenu(children: items)
-    }
-
-    /// Text boxes add their own entries (font size, color); see `EditorCoordinator+Text`.
-    func textMenuItems(for object: PageObject, selection: ObjectSelection) -> [UIMenuElement] {
-        []
     }
 
     // MARK: Actions

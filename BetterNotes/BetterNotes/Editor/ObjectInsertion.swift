@@ -8,13 +8,16 @@ final class EditorBridge {
 }
 
 /// Where an image for the page comes from (the toolbar's image menu).
-enum ImageSource {
-    case photos, files, clipboard
+enum ImageSource: Equatable {
+    case photos, files
+    /// The system Paste button handed over these bytes.
+    case pasted(Data)
+    case unreadablePaste
 }
 
 extension View {
     /// The Photos and Files pickers for images on a page (M8). `source` opens one of them, or
-    /// pastes right away for the clipboard, and is reset afterwards.
+    /// inserts pasted bytes right away, and is reset afterwards.
     func objectImageInsertion(source: Binding<ImageSource?>, bridge: EditorBridge, report: @escaping (String) -> Void) -> some View {
         modifier(ObjectImageInsertionModifier(source: source, bridge: bridge, report: report))
     }
@@ -31,9 +34,16 @@ private struct ObjectImageInsertionModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onChange(of: source) { _, new in
-                guard new == .clipboard else { return }
-                source = nil
-                bridge.controller?.pasteImage()
+                switch new {
+                case .pasted(let data):
+                    source = nil
+                    bridge.controller?.insertImage(data: data)
+                case .unreadablePaste:
+                    source = nil
+                    report("The clipboard's image could not be read.")
+                default:
+                    break
+                }
             }
             .photosPicker(
                 isPresented: Binding(get: { source == .photos }, set: { if !$0 { source = nil } }),

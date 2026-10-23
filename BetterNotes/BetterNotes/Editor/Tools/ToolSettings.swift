@@ -75,6 +75,8 @@ nonisolated enum ToolChoice: Codable, Equatable, Sendable {
     case shape
     /// Selects images and text boxes to move, resize or delete them (M8).
     case select
+    /// Tap a page to place a text box, or tap a text box to edit it (M8).
+    case text
 }
 
 nonisolated enum ToolbarPosition: String, Codable, CaseIterable, Sendable {
@@ -160,6 +162,11 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
     var holdToSnapShapes = true
     /// Hold the Pencil still at the end of a freehand stroke to make it a smooth curve (M7b).
     var holdToSmoothCurves = true
+    /// Font size and color of new text boxes (M8).
+    var textFontSize = TextObject.defaultFontSize
+    var textColorHex = "#000000"
+
+    static let textFontSizes: [Double] = [10, 12, 14, 16, 20, 24, 32, 40, 56]
 
     init() {}
 
@@ -167,6 +174,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         case version, selected, pens, enabledPens, favoriteColors, presets, eraserMode, eraserWidth, shape
         case toolbarPosition, isToolbarCollapsed, allowsFingerDrawing, isLeftHanded, twoFingerTapUndoes
         case threeFingerTapRedoes, usesSystemToolPicker, holdToSnapShapes, holdToSmoothCurves
+        case textFontSize, textColorHex
     }
 
     init(from decoder: Decoder) throws {
@@ -195,6 +203,8 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         usesSystemToolPicker = value(.usesSystemToolPicker) ?? usesSystemToolPicker
         holdToSnapShapes = value(.holdToSnapShapes) ?? holdToSnapShapes
         holdToSmoothCurves = value(.holdToSmoothCurves) ?? holdToSmoothCurves
+        textFontSize = value(.textFontSize) ?? textFontSize
+        textColorHex = (value(.textColorHex) as String?).flatMap(HexColor.normalized) ?? textColorHex
         sanitize()
     }
 
@@ -218,11 +228,14 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         try c.encode(usesSystemToolPicker, forKey: .usesSystemToolPicker)
         try c.encode(holdToSnapShapes, forKey: .holdToSnapShapes)
         try c.encode(holdToSmoothCurves, forKey: .holdToSmoothCurves)
+        try c.encode(textFontSize, forKey: .textFontSize)
+        try c.encode(textColorHex, forKey: .textColorHex)
     }
 
     /// Repairs values that make no sense (a bad color, a width out of range, an empty toolbar).
     private mutating func sanitize() {
         eraserWidth = min(max(eraserWidth, Self.eraserWidthRange.lowerBound), Self.eraserWidthRange.upperBound)
+        textFontSize = min(max(textFontSize, 6), 120)
         for (kind, setting) in pens {
             pens[kind] = PenSetting(
                 colorHex: HexColor.normalized(setting.colorHex) ?? kind.defaultColor,
@@ -337,9 +350,12 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
                 kind.inkType, color: HexColor.color(setting.colorHex) ?? .black, width: CGFloat(setting.width))
         case .eraser:
             return eraserMode == .stroke ? PKEraserTool(.vector) : PKEraserTool(.fixedWidthBitmap, width: CGFloat(eraserWidth))
-        case .lasso, .select:
-            // In select mode the canvas does not draw (the object gesture reads the touches).
+        case .lasso:
             return PKLassoTool()
+        case .select, .text:
+            // The canvas takes no touches with these tools (the object gestures read them, see
+            // `EditorCoordinator.configure`); a plain pen is the most harmless tool to give it.
+            return PKInkingTool(.pen, color: .black, width: 1)
         case .shape:
             // The canvas does not draw while the shape tool is on (the shape gesture does), but
             // it still needs a tool; this one matches the shape if PencilKit ever shows it.
