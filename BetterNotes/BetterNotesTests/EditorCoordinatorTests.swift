@@ -90,7 +90,7 @@ struct EditorCoordinatorTests {
         #expect(overlay.canvas.drawing.strokes.count == 1)
     }
 
-    @Test func undoGivesThePageAFreshCanvasWithTheSameSetup() throws {
+    @Test func undoGivesThePageAFreshCanvasWithTheSameSetup() async throws {
         let setup = try makeSetup()
         let overlay = PageOverlayView(pageID: setup.pageA)
         overlay.canvas.delegate = setup.coordinator
@@ -111,6 +111,8 @@ struct EditorCoordinatorTests {
         let subviews = overlay.subviews
         #expect(subviews.firstIndex(of: before)! > subviews.firstIndex(of: after)!)
         setup.coordinator.canvasViewDidFinishRendering(after)
+        #expect(before.superview === overlay)  // a short grace period: "rendered" is not yet "on screen"
+        try await Task.sleep(for: .seconds(EditorCoordinator.retireGracePeriod + 0.2))
         #expect(before.superview == nil && overlay.retiredCanvas == nil)
         #expect(after.delegate === setup.coordinator)
         #expect((after.tool as? PKInkingTool)?.inkType == .fountainPen)

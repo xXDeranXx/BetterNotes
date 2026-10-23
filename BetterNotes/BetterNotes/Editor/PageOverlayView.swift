@@ -110,7 +110,7 @@ final class PageOverlayView: UIView {
 
     /// The canvas that was replaced and still covers the new one (see `replaceCanvas`).
     private(set) var retiredCanvas: PageCanvasView?
-    static let retireTimeout: TimeInterval = 0.5
+    static let retireTimeout: TimeInterval = 0.6
 
     func retireOldCanvas() {
         retiredCanvas?.removeFromSuperview()

@@ -228,11 +228,20 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     }
 
     /// PencilKit has drawn the canvas's ink: a canvas that was swapped in after an undo now
-    /// shows the right ink, so the old one that covered it can go.
+    /// shows the right ink, so the old one that covered it can go. PencilKit reports this
+    /// about 40 ms after the drawing was assigned (measured), but removing the old canvas in
+    /// that same moment still flickered on the iPad, so it waits `retireGracePeriod` longer.
     func canvasViewDidFinishRendering(_ canvasView: PKCanvasView) {
-        guard let overlay = canvasView.superview as? PageOverlayView, overlay.canvas === canvasView else { return }
-        overlay.retireOldCanvas()
+        guard let overlay = canvasView.superview as? PageOverlayView, overlay.canvas === canvasView,
+            let retired = overlay.retiredCanvas
+        else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.retireGracePeriod) { [weak overlay, weak retired] in
+            guard let overlay, let retired, overlay.retiredCanvas === retired else { return }
+            overlay.retireOldCanvas()
+        }
     }
+
+    static let retireGracePeriod: TimeInterval = 0.1
 
     // MARK: Canvas → model
 
