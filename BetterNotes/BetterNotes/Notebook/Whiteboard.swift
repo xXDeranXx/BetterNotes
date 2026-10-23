@@ -18,6 +18,9 @@ nonisolated enum Whiteboard {
     static let minimumZoom: CGFloat = 0.5
     static let maximumZoom: CGFloat = 5
 
+    /// Undo steps kept on a board (see `Notebook.init`); notebooks keep all.
+    static let undoLevels = 30
+
     /// Space between dots and grid lines, in points.
     static let patternSpacing: CGFloat = 32
     /// Around the ink in exports and covers.

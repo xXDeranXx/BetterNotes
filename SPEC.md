@@ -212,6 +212,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 - A whiteboard is a notebook with one big page: every page operation throws `whiteboardHasNoPages` in the model, not only in the interface.
 - Board mode (`PageOverlayView(boardSize:)`): the canvas is the scroll view; page-space layers follow it (`syncBoardLayers`); code that works in page points uses `overlay.pageSpace`, `overlay.editingHost` and `overlay.pageSize`, never the overlay's own frame. Fingers only scroll and zoom; the canvas keeps its touches with the select and text tools.
 - Render and export a board by region (`PageRenderer.drawBoard`), never the whole page at page scale; keep one ink picture under 64 megapixels (`Whiteboard.inkScale`).
+- Sizes that follow the page (new images: 60 % of it) use the part on screen on a board. A board keeps 30 undo steps (each holds the whole board's old drawing, about 1.6 MB at 5000 strokes).
 
 **Objects (images, text boxes)**
 - Every object change is one undo step through `Notebook.setObjects`; the selection keeps only ids. Text typed in a box is one step when typing ends, and is put into the model before closing, leaving the app, undo and redo (`finishTextEditing`).

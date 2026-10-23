@@ -56,12 +56,13 @@ nonisolated enum ObjectImageImport {
         return ![.none, .noneSkipFirst, .noneSkipLast].contains(alpha)
     }
 
-    /// Where a new image goes: centered on `center`, at most 60 % of the page's width and
-    /// height, never larger than the image itself on a Retina screen (2 pixels per point), and
-    /// moved inside the page if it would stick out. All in page points.
-    static func defaultFrame(pixelSize: CGSize, pageSize: CGSize, center: CGPoint) -> CGRect {
+    /// Where a new image goes: centered on `center`, at most 60 % of `area` (the page, or on a
+    /// whiteboard the part on screen), never larger than the image itself on a Retina screen
+    /// (2 pixels per point), and moved inside the page if it would stick out. All in page points.
+    static func defaultFrame(pixelSize: CGSize, pageSize: CGSize, center: CGPoint, area: CGSize? = nil) -> CGRect {
         let natural = CGSize(width: pixelSize.width / 2, height: pixelSize.height / 2)
-        let scale = min(1, pageSize.width * 0.6 / natural.width, pageSize.height * 0.6 / natural.height)
+        let limit = area ?? pageSize
+        let scale = min(1, limit.width * 0.6 / natural.width, limit.height * 0.6 / natural.height)
         let size = CGSize(width: (natural.width * scale).rounded(), height: (natural.height * scale).rounded())
         let x = min(max(center.x - size.width / 2, 0), max(0, pageSize.width - size.width))
         let y = min(max(center.y - size.height / 2, 0), max(0, pageSize.height - size.height))
@@ -73,14 +74,19 @@ extension Notebook {
     /// Stores a prepared image in the notebook and puts it on the page as one undo step
     /// ("Insert Image"). The file is written first, so `meta.json` never names a missing file.
     @discardableResult
-    func insertImage(_ image: ObjectImageImport.Prepared, on pageID: UUID, center: CGPoint) throws -> PageObject {
+    /// `area` limits the size (60 % of it) instead of the page: a whiteboard passes the part
+    /// on screen, or a photo would cover far more than the screen.
+    func insertImage(
+        _ image: ObjectImageImport.Prepared, on pageID: UUID, center: CGPoint, area: CGSize? = nil
+    ) throws -> PageObject {
         guard let page = pages.first(where: { $0.id == pageID }) else { throw NotebookError.pagesCannotBeChanged }
         let name = "\(UUID().uuidString).\(image.fileExtension)"
         try package.writeObjectFile(image.data, named: name)
         // `size` is the displayed size; objects live on the unrotated page.
         let unrotated = page.rotation % 180 == 0 ? page.size : page.size.landscape
         let frame = ObjectImageImport.defaultFrame(
-            pixelSize: image.pixelSize, pageSize: CGSize(width: unrotated.width, height: unrotated.height), center: center)
+            pixelSize: image.pixelSize, pageSize: CGSize(width: unrotated.width, height: unrotated.height), center: center,
+            area: area)
         let object = PageObject(frame: frame, content: .image(ImageObject(file: name)))
         addObject(object, to: pageID, actionName: "Insert Image")
         return object

@@ -115,6 +115,9 @@ final class Notebook {
     init(package: NotebookPackage, meta: NotebookMeta) {
         self.package = package
         self.meta = meta
+        // Every ink undo step keeps the page's whole old drawing. On a whiteboard that is the
+        // whole board: about 1.6 MB per step at 5000 strokes (measured), so its history is capped.
+        if meta.isWhiteboard { undoManager.levelsOfUndo = Whiteboard.undoLevels }
         if let document = PDFDocument(url: package.pdfURL), document.pageCount == meta.pages.count {
             self.document = document
             for (index, page) in meta.pages.enumerated() {

@@ -137,6 +137,17 @@ struct WhiteboardEditorTests {
         _ = window
     }
 
+    @Test func aBigImageOnTheBoardFitsOnTheScreen() throws {
+        let setup = try makeSetup()
+        let overlay = setup.overlay
+        let visible = overlay.visibleBoardRect
+        let prepared = ObjectImageImport.Prepared(data: Data([0xFF, 0xD8]), fileExtension: "jpg", pixelSize: CGSize(width: 3000, height: 2000))
+        let object = try setup.notebook.insertImage(
+            prepared, on: setup.notebook.pages[0].id, center: CGPoint(x: visible.midX, y: visible.midY), area: visible.size)
+        #expect(object.frame.width <= visible.width * 0.6 + 1 && object.frame.height <= visible.height * 0.6 + 1)
+        #expect(visible.contains(object.frame))
+    }
+
     @Test func aNotebookPageKeepsItsOwnCoordinates() {
         let overlay = PageOverlayView(pageID: UUID())
         #expect(!overlay.isBoard && overlay.pageSpace === overlay && overlay.editingHost === overlay)

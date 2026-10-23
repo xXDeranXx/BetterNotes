@@ -248,6 +248,10 @@ Decided:
   - Library: **New Whiteboard** in the "+" menu (title, background plain/dots/grid, cover color), tiles say "Whiteboard" instead of a page count, and the Move/Copy pages list leaves boards out.
   - The spike screen (`Spike/`, its menu item and hooks) is removed.
   - Tests: `WhiteboardEditorTests` (opens in the middle, screen to board points at zoom 2, zoom limit, tab position, canvas swap, undo, select tool keeps scrolling, images to the screen's middle, a shape lands where drawn, notebook pages unchanged); `InkUITests` has a whiteboard part (draw, undo, draw: the undone stroke stays gone). Screenshots in the simulator: dots, ink and a text box typed on the board. 497 unit tests and both UI tests pass (the simulator needed I/O > Keyboard > Connect Hardware Keyboard off; with it on, the typing checks fail and runs could hang).
+- **Whiteboard, found in review before the handover:**
+  - **Images**: a new image was limited to 60 % of the *page*, which on a 10000 pt board is no limit; a photo landed far wider than the screen. On a board the limit is 60 % of the part on screen (`insertImage(area:)`). Pasted text has its own maximum width and text boxes a fixed default width, so they were fine. Tested.
+  - **Undo memory** (measured in the simulator with a throwaway test): on a 5000-stroke board, 50 ink undo steps took **79 MB** (about 1.6 MB per step: each keeps the board's whole old drawing). A board's history is therefore capped at **30 steps** (`Whiteboard.undoLevels`, about 50 MB at that size); notebooks stay unlimited (their steps are one page). Saving that board's ink: 3.1 MB, `dataRepresentation` 83 ms, off the main thread.
+  - 499 unit tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

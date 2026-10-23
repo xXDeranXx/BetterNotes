@@ -26,6 +26,14 @@ struct WhiteboardModelTests {
         #expect(size < 20_000)
     }
 
+    @Test func aBoardKeepsAtMost30UndoSteps() throws {
+        let folder = try TempFolder()
+        let board = try makeBoard(in: folder)
+        #expect(board.undoManager.levelsOfUndo == Whiteboard.undoLevels)
+        let notebook = try Notebook.open(try makeNotebook(in: folder.url))
+        #expect(notebook.undoManager.levelsOfUndo == 0)  // unlimited
+    }
+
     @Test func everyPageOperationIsRefused() throws {
         let folder = try TempFolder()
         let board = try makeBoard(in: folder)

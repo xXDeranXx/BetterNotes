@@ -465,7 +465,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
                 // Shrinking a 12-megapixel photo takes a moment; not on the main thread.
                 let prepared = try await Task.detached(priority: .userInitiated) { try prepare() }.value
                 guard let target = target ?? pageAtScreenCenter() else { return }
-                try notebook.insertImage(prepared, on: target.id, center: target.point)
+                try notebook.insertImage(prepared, on: target.id, center: target.point, area: board?.visibleBoardRect.size)
             } catch {
                 onObjectError?(error.localizedDescription)
             }
