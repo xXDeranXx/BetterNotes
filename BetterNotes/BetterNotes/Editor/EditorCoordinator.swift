@@ -26,8 +26,11 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private(set) var allowsFingerDrawing = false
     /// The shape tool's choices while it is selected, nil for every other tool.
     private(set) var shape: ShapeSetting?
-    /// The pen in use while hold to snap is on (and a pen of the own toolbar is selected).
+    /// The pen in use while hold to snap or hold to smooth is on (and a pen of the own toolbar
+    /// is selected), and which of the two are on.
     private(set) var snappingPen: (kind: PenKind, setting: PenSetting)?
+    private var snapsShapes = false
+    private var smoothsCurves = false
     private var lastApplication: ToolApplication?
 
     /// What `configure` needs from the settings; selecting a tool or changing its color or
@@ -191,7 +194,9 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         allowsFingerDrawing = settings.allowsFingerDrawing
         self.isRulerActive = isRulerActive
         shape = settings.selected == .shape && !settings.usesSystemToolPicker ? settings.shape : nil
-        if case .pen(let kind) = settings.selected, settings.holdToSnapShapes, !settings.usesSystemToolPicker {
+        snapsShapes = settings.holdToSnapShapes
+        smoothsCurves = settings.holdToSmoothCurves
+        if case .pen(let kind) = settings.selected, snapsShapes || smoothsCurves, !settings.usesSystemToolPicker {
             snappingPen = (kind, settings.setting(for: kind))
         } else {
             snappingPen = nil
@@ -357,13 +362,13 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
 
     // MARK: Hold to snap (M7)
 
-    /// A snap in progress: the shape as recognized, where the Pencil was held, and the shape
+    /// A snap in progress: the shape or curve as recognized, where the Pencil was held, and what
     /// the preview showed last (committed on lift, like the shape tool's last end point).
     private struct Snap {
         weak var overlay: PageOverlayView?
-        let shape: SnappedShape
+        let shape: SnapResult
         let hold: CGPoint
-        var current: SnappedShape
+        var current: SnapResult
     }
     private var snap: Snap?
 
@@ -374,10 +379,19 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     }
     private var inkTemplates: [TemplateKey: InkTemplate] = [:]
 
-    /// Called by the hold gesture once the Pencil rested: is this stroke a shape?
+    /// Called by the hold gesture once the Pencil rested: is this stroke a shape, or else a
+    /// curve to smooth? Shapes come first, so a held rectangle never becomes a rounded curve.
     func prepareSnap(_ points: [CGPoint], on overlay: PageOverlayView) -> Bool {
-        guard snappingPen != nil, let shape = ShapeRecognizer.recognize(points) else { return false }
-        snap = Snap(overlay: overlay, shape: shape, hold: overlay.holdGesture.holdLocation, current: shape)
+        guard snappingPen != nil else { return false }
+        let result: SnapResult
+        if snapsShapes, let shape = ShapeRecognizer.recognize(points) {
+            result = .shape(shape)
+        } else if smoothsCurves, let curve = CurveSmoother.smooth(points) {
+            result = .curve(curve)
+        } else {
+            return false
+        }
+        snap = Snap(overlay: overlay, shape: result, hold: overlay.holdGesture.holdLocation, current: result)
         return true
     }
 
@@ -408,7 +422,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         overlay.canvas.drawingGestureRecognizer.isEnabled = shape == nil
     }
 
-    private func showSnapPreview(_ shape: SnappedShape, on overlay: PageOverlayView) {
+    private func showSnapPreview(_ shape: SnapResult, on overlay: PageOverlayView) {
         guard let pen = snappingPen else { return }
         let color = HexColor.color(pen.setting.colorHex) ?? .black
         // A plain line in roughly the drawn width; textures show once the Pencil is lifted.
@@ -425,7 +439,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     }
 
     /// The snapped shape as one stroke in the pen's own ink, looking like the pen's last stroke.
-    private func snapStrokes(_ shape: SnappedShape) -> [PKStroke]? {
+    private func snapStrokes(_ shape: SnapResult) -> [PKStroke]? {
         guard let pen = snappingPen, let points = shape.outline.pieces.first else { return nil }
         let key = TemplateKey(kind: pen.kind, width: pen.setting.width)
         let template = (inkTemplates[key] ?? InkTemplate.fallback(for: pen.kind.inkType, width: CGFloat(pen.setting.width)))

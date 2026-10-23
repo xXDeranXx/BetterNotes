@@ -156,13 +156,15 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
     var usesSystemToolPicker = false
     /// Hold the Pencil still at the end of a stroke to turn it into a clean shape (M7).
     var holdToSnapShapes = true
+    /// Hold the Pencil still at the end of a freehand stroke to make it a smooth curve (M7b).
+    var holdToSmoothCurves = true
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
         case version, selected, pens, enabledPens, favoriteColors, presets, eraserMode, eraserWidth, shape
         case toolbarPosition, isToolbarCollapsed, allowsFingerDrawing, isLeftHanded, twoFingerTapUndoes
-        case threeFingerTapRedoes, usesSystemToolPicker, holdToSnapShapes
+        case threeFingerTapRedoes, usesSystemToolPicker, holdToSnapShapes, holdToSmoothCurves
     }
 
     init(from decoder: Decoder) throws {
@@ -190,6 +192,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         threeFingerTapRedoes = value(.threeFingerTapRedoes) ?? threeFingerTapRedoes
         usesSystemToolPicker = value(.usesSystemToolPicker) ?? usesSystemToolPicker
         holdToSnapShapes = value(.holdToSnapShapes) ?? holdToSnapShapes
+        holdToSmoothCurves = value(.holdToSmoothCurves) ?? holdToSmoothCurves
         sanitize()
     }
 
@@ -212,6 +215,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         try c.encode(threeFingerTapRedoes, forKey: .threeFingerTapRedoes)
         try c.encode(usesSystemToolPicker, forKey: .usesSystemToolPicker)
         try c.encode(holdToSnapShapes, forKey: .holdToSnapShapes)
+        try c.encode(holdToSmoothCurves, forKey: .holdToSmoothCurves)
     }
 
     /// Repairs values that make no sense (a bad color, a width out of range, an empty toolbar).
