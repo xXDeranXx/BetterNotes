@@ -236,11 +236,12 @@ Each milestone ends with: the app running on the developer's iPad, tests passing
 - **M7a** own pen toolbar (pens, colors, presets, eraser, lasso, ruler, shapes with dash and fill, tap gestures, squeeze palette).
 - **M7** hold to snap shapes; **M7b** hold to smooth curves.
 - **M8** images and text boxes (Photos, Files, Paste, hold-to-paste, select, move, resize, arrange, fonts, bold and italic).
+- **Tabs** (strip, restore on launch, rename, background tabs) and **M9** (outline tab, Goodnotes-style polish, bring the window forward, pages dragged between windows).
 
 ### Order of work (updated 2026-10-23)
-Tabs done and confirmed. **M9 built** (outline, Goodnotes-style polish, windows; iPad check pending). Next: the developer's iPad checklist for M9 and a week of lectures -> the **whiteboard spike**.
+Tabs and **M9** done and confirmed on the iPad (2026-10-23). Next: the **whiteboard spike**; meanwhile a week of lectures instead of Goodnotes drives the "Later" list.
 
-### Milestone 9: Daily-use polish (built 2026-10-23, see `docs/DECISIONS.md`, "M9")
+### Milestone 9: Daily-use polish (done 2026-10-23, see `docs/DECISIONS.md`, "M9")
 Added: an outline tab in the sidebar (PDF bookmarks or guessed titles, own nested entries, exported as bookmarks) and a Goodnotes-style polish of the interface.
 Build: polish for multiple windows and Split View (enabled since milestone 1): opening a notebook that is already open brings its window forward, drag and drop between windows; dark mode, empty and error states, layout checks in both orientations.
 Check yourself: use the app for one week of lectures instead of Goodnotes and note what bothers you; that list drives the "Later" features.
