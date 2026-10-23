@@ -29,7 +29,29 @@ final class ToolController {
 
     func select(_ choice: ToolChoice) {
         if settings.selected != .eraser, choice == .eraser { toolBeforeEraser = settings.selected }
+        toolBeforeObjectSelection = nil  // a tool chosen by hand stays
         settings.selected = choice
+    }
+
+    // MARK: Selecting objects with a long press
+
+    /// The tool in use before a long press on an object switched to the select tool, so the
+    /// same tool comes back once nothing is selected any more.
+    @ObservationIgnored private(set) var toolBeforeObjectSelection: ToolChoice?
+
+    /// A long press (finger) on an image or text box: select tool for now.
+    func beginTemporaryObjectSelection() {
+        guard settings.selected != .select else { return }
+        let previous = settings.selected
+        settings.selected = .select
+        toolBeforeObjectSelection = previous
+    }
+
+    /// The selection was cleared: back to the tool from before the long press, if there was one.
+    func endTemporaryObjectSelection() {
+        guard let previous = toolBeforeObjectSelection else { return }
+        toolBeforeObjectSelection = nil
+        if settings.selected == .select { settings.selected = previous }
     }
 
     // MARK: The Pencil

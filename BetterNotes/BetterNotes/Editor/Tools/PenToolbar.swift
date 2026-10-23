@@ -48,6 +48,7 @@ struct PenToolbar: View {
         case .pen(let kind): kind.symbol
         case .eraser: "eraser"
         case .lasso: "lasso"
+        case .select: Self.selectSymbol
         case .shape: tools.settings.shape.kind.symbol
         }
     }
@@ -56,7 +57,7 @@ struct PenToolbar: View {
         switch tools.settings.selected {
         case .pen: Color(hex: tools.currentPenSetting.colorHex)
         case .shape: Color(hex: tools.settings.shape.colorHex)
-        case .eraser, .lasso: .primary
+        case .eraser, .lasso, .select: .primary
         }
     }
 
@@ -69,8 +70,10 @@ struct PenToolbar: View {
     /// The outer padding (8 on each side) and the padding inside the background (8 on each side).
     private static let padding: CGFloat = 32
 
-    /// Buttons: the pens, eraser, lasso, shapes, text box, image, ruler, presets, settings, hide.
-    private var buttonCount: Int { tools.settings.enabledPens.count + 9 }
+    /// Buttons: the pens, eraser, lasso, select, shapes, text box, image, ruler, presets, settings, hide.
+    private var buttonCount: Int { tools.settings.enabledPens.count + 10 }
+
+    static let selectSymbol = "hand.point.up.left"
     /// Two dividers between the groups.
     private static let dividerCount = 2
 
@@ -116,6 +119,8 @@ struct PenToolbar: View {
             divider
             eraserButton
             toolButton(.lasso, symbol: "lasso", label: "Lasso")
+            // PencilKit's lasso only selects ink, so images and text boxes have their own tool.
+            toolButton(.select, symbol: Self.selectSymbol, label: "Select images and text")
             shapeButton
             // Text boxes come with milestone 8 (objects on pages).
             icon("character.textbox", isSelected: false)

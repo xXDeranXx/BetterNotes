@@ -100,6 +100,9 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         }
 
         installGestures()
+        // A long press on an object switches to the select tool until nothing is selected.
+        coordinator.onLongPressObject = { [weak self] in self?.tools?.beginTemporaryObjectSelection() }
+        coordinator.onSelectionCleared = { [weak self] in self?.tools?.endTemporaryObjectSelection() }
 
         pdfView.frame = view.bounds
         pdfView.autoresizingMask = [.flexibleWidth, .flexibleHeight]

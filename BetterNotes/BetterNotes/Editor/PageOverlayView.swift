@@ -179,6 +179,7 @@ final class PageOverlayView: UIView {
         holdGesture.isEnabled = false
         holdGesture.delegate = self
         addGestureRecognizer(holdGesture)
+        setUpObjectSelection()
     }
 
     /// Watches pen strokes for a hold (see `HoldToSnapGesture`).
@@ -256,6 +257,9 @@ final class PageOverlayView: UIView {
         for layer in [fillPreview, outlinePreview] where layer.contentsScale != screenScale * scale {
             layer.contentsScale = screenScale * scale
         }
+        for layer in [selectionOutline, selectionHandles] where layer.contentsScale != screenScale * scale {
+            layer.contentsScale = screenScale * scale
+        }
         // Text boxes are drawn by hand too; render them as sharp as the ink.
         for case let box as TextBoxView in objectsLayer.subviews where box.contentScaleFactor != screenScale * scale {
             box.contentScaleFactor = screenScale * scale
@@ -298,6 +302,61 @@ final class PageOverlayView: UIView {
         for leftover in remaining.values { leftover.removeFromSuperview() }
         setNeedsLayout()  // new text boxes get their sharpness in layoutSubviews
     }
+
+    /// Moves an object's view while it is dragged; the model changes when the drag ends.
+    func previewObjectFrame(_ frame: CGRect, for id: UUID) {
+        objectViews[id]?.frame = frame
+    }
+
+    // MARK: Selecting objects (M8)
+
+    /// Reads drags on objects while the select tool is on (see `ObjectDragGesture`).
+    let objectGesture = ObjectDragGesture()
+    /// A finger held on an object selects it with any tool.
+    let objectLongPress = UILongPressGestureRecognizer()
+    /// The dashed frame and the handles around the selected object, above the ink.
+    private let selectionOutline = CAShapeLayer()
+    private let selectionHandles = CAShapeLayer()
+
+    private func setUpObjectSelection() {
+        objectGesture.isEnabled = false
+        addGestureRecognizer(objectGesture)
+        objectLongPress.isEnabled = false
+        objectLongPress.minimumPressDuration = 0.5
+        objectLongPress.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]  // fingers
+        objectLongPress.delegate = self
+        addGestureRecognizer(objectLongPress)
+        selectionOutline.fillColor = nil
+        selectionOutline.strokeColor = UIColor.systemBlue.cgColor
+        selectionHandles.fillColor = UIColor.white.cgColor
+        selectionHandles.strokeColor = UIColor.systemBlue.cgColor
+        for layer in [selectionOutline, selectionHandles] { previewLayer.layer.addSublayer(layer) }
+    }
+
+    /// Shows the selection around `frame` (nil hides it). The overlay is enlarged by the zoom
+    /// from outside, so lines and handles are divided by `zoom` to look the same size at any zoom.
+    func showSelection(_ frame: CGRect?, handles: [CGPoint], zoom: CGFloat) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)  // follow the Pencil without animation
+        defer { CATransaction.commit() }
+        guard let frame else {
+            selectionOutline.path = nil
+            selectionHandles.path = nil
+            return
+        }
+        let unit = 1 / max(zoom, 0.01)
+        selectionOutline.path = UIBezierPath(rect: frame).cgPath
+        selectionOutline.lineWidth = 1.5 * unit
+        selectionOutline.lineDashPattern = [NSNumber(value: Double(6 * unit)), NSNumber(value: Double(4 * unit))]
+        let dots = UIBezierPath()
+        for point in handles {
+            dots.append(UIBezierPath(ovalIn: CGRect(x: point.x - 6 * unit, y: point.y - 6 * unit, width: 12 * unit, height: 12 * unit)))
+        }
+        selectionHandles.path = dots.cgPath
+        selectionHandles.lineWidth = 1.5 * unit
+    }
+
+    var isShowingSelection: Bool { selectionOutline.path != nil }
 
     /// The resolution the shape preview draws at (tests).
     var shapePreviewScale: CGFloat { outlinePreview.contentsScale }
@@ -356,6 +415,70 @@ final class ShapeDragGesture: UIGestureRecognizer {
         var types: [UITouch.TouchType] = [.pencil]
         if allowed { types.append(.direct) }
         allowedTouchTypes = types.map { NSNumber(value: $0.rawValue) }
+    }
+}
+
+/// Follows one drag on an object while the select tool is on (M8). Unlike the shape gesture
+/// it only starts when `shouldBegin` says the touch is on an object (or a handle): a finger
+/// that starts elsewhere fails it at once, so the page scrolls as usual.
+final class ObjectDragGesture: UIGestureRecognizer {
+    /// Asked with the touch's position in page points when a touch begins.
+    var shouldBegin: ((CGPoint) -> Bool)?
+    private(set) var startLocation: CGPoint = .zero
+    /// True once the touch moved more than a few screen points: a drag, not a tap.
+    private(set) var hasMoved = false
+    private var trackedTouch: UITouch?
+    private var startOnGlass: CGPoint = .zero
+
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        allowedTouchTypes = [UITouch.TouchType.pencil, .direct].map { NSNumber(value: $0.rawValue) }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard trackedTouch == nil, touches.count == 1, let touch = touches.first else {
+            if trackedTouch == nil { state = .failed } else { state = .cancelled }  // a pinch
+            return
+        }
+        let location = touch.location(in: view)
+        guard shouldBegin?(location) == true else {
+            state = .failed
+            return
+        }
+        trackedTouch = touch
+        startLocation = location
+        startOnGlass = touch.location(in: nil)
+        hasMoved = false
+        state = .began
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        let glass = trackedTouch.location(in: nil)
+        if hypot(glass.x - startOnGlass.x, glass.y - startOnGlass.y) > 6 { hasMoved = true }
+        state = .changed
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        state = .ended
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = .cancelled
+    }
+
+    override func reset() {
+        super.reset()
+        trackedTouch = nil
+        hasMoved = false
+    }
+
+    /// How far the touch moved since it began, in page points.
+    var translation: CGPoint {
+        guard let trackedTouch, let view else { return .zero }
+        let now = trackedTouch.location(in: view)
+        return CGPoint(x: now.x - startLocation.x, y: now.y - startLocation.y)
     }
 }
 
@@ -480,7 +603,8 @@ extension PageOverlayView: UIGestureRecognizerDelegate {
         _ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool {
         // Compared by identity: PencilKit may attach its gesture to an inner view of the canvas.
-        gestureRecognizer === holdGesture
+        if gestureRecognizer === objectLongPress { return true }  // never stops scrolling or zooming
+        return gestureRecognizer === holdGesture
             && (other === canvas.drawingGestureRecognizer || other === retiredCanvas?.drawingGestureRecognizer)
     }
 }

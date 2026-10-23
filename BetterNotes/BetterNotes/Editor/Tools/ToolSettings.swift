@@ -73,6 +73,8 @@ nonisolated enum ToolChoice: Codable, Equatable, Sendable {
     case eraser
     case lasso
     case shape
+    /// Selects images and text boxes to move, resize or delete them (M8).
+    case select
 }
 
 nonisolated enum ToolbarPosition: String, Codable, CaseIterable, Sendable {
@@ -335,7 +337,8 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
                 kind.inkType, color: HexColor.color(setting.colorHex) ?? .black, width: CGFloat(setting.width))
         case .eraser:
             return eraserMode == .stroke ? PKEraserTool(.vector) : PKEraserTool(.fixedWidthBitmap, width: CGFloat(eraserWidth))
-        case .lasso:
+        case .lasso, .select:
+            // In select mode the canvas does not draw (the object gesture reads the touches).
             return PKLassoTool()
         case .shape:
             // The canvas does not draw while the shape tool is on (the shape gesture does), but

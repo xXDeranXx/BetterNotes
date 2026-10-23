@@ -32,6 +32,16 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private var snapsShapes = false
     private var smoothsCurves = false
     private var lastApplication: ToolApplication?
+    /// True while the select tool is on (M8): touches move objects, PencilKit does not draw.
+    private(set) var selectsObjects = false
+    /// The toolbar's favorite colors, for the text box color menu.
+    private(set) var favoriteColors: [String] = ToolSettings.defaultFavorites
+    /// The selected object, its page, and an edit in progress (see `EditorCoordinator+Objects`).
+    var selection: ObjectSelection?
+    var objectDrag: ObjectDrag?
+    /// The editor switches tools for these (a long press on an object; the selection ended).
+    var onLongPressObject: (() -> Void)?
+    var onSelectionCleared: (() -> Void)?
 
     /// What `configure` needs from the settings; selecting a tool or changing its color or
     /// width changes it, undo does not.
@@ -66,7 +76,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         }
     }
 
-    private var zoom: CGFloat = 1
+    private(set) var zoom: CGFloat = 1
     private(set) var thermalState: ProcessInfo.ThermalState
     private var thermalObserver: NSObjectProtocol?
 
@@ -117,6 +127,13 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
             guard let self, let overlay else { return false }
             return self.prepareSnap(points, on: overlay)
         }
+        overlay.objectGesture.addTarget(self, action: #selector(objectDragged(_:)))
+        overlay.objectGesture.shouldBegin = { [weak self, weak overlay] point in
+            guard let self, let overlay else { return false }
+            return self.objectTouchBegan(at: point, on: overlay)
+        }
+        overlay.objectLongPress.addTarget(self, action: #selector(objectLongPressed(_:)))
+        overlay.addInteraction(UIEditMenuInteraction(delegate: self))
         return overlay
     }
 
@@ -151,6 +168,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         guard newZoom != zoom else { return }
         zoom = newZoom
         visibleOverlays.values.forEach(applyRenderScale)
+        refreshSelection()  // handles keep their size on screen
     }
 
     private var currentRenderScale: CGFloat {
@@ -197,7 +215,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         return image
     }
 
-    private func showObjects(on overlay: PageOverlayView) {
+    func showObjects(on overlay: PageOverlayView) {
         overlay.showObjects(notebook.objects(on: overlay.pageID)) { [weak self] in self?.objectImage(named: $0) }
     }
 
@@ -205,6 +223,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private func modelObjectsChanged(_ pageID: UUID) {
         guard let overlay = visibleOverlays[pageID] else { return }
         showObjects(on: overlay)
+        if selection?.pageID == pageID { refreshSelection() }
     }
 
     // MARK: Tools
@@ -225,6 +244,9 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         allowsFingerDrawing = settings.allowsFingerDrawing
         self.isRulerActive = isRulerActive
         shape = settings.selected == .shape && !settings.usesSystemToolPicker ? settings.shape : nil
+        selectsObjects = settings.selected == .select && !settings.usesSystemToolPicker
+        favoriteColors = settings.favoriteColors
+        if !selectsObjects { clearSelection(notify: false) }
         snapsShapes = settings.holdToSnapShapes
         smoothsCurves = settings.holdToSmoothCurves
         if case .pen(let kind) = settings.selected, snapsShapes || smoothsCurves, !settings.usesSystemToolPicker {
@@ -246,8 +268,11 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         // While the shape tool is on, the shape gesture reads the Pencil and PencilKit must not
         // draw (SPEC, M2 spike: switching its gesture off is clean).
         let drawsShapes = shape != nil
-        if canvas.drawingGestureRecognizer.isEnabled == drawsShapes { canvas.drawingGestureRecognizer.isEnabled = !drawsShapes }
+        if canvas.drawingGestureRecognizer.isEnabled == blocksInk { canvas.drawingGestureRecognizer.isEnabled = !blocksInk }
         overlay.shapeGesture.isEnabled = drawsShapes
+        overlay.objectGesture.isEnabled = selectsObjects
+        // A finger long press selects objects with the other tools; not while fingers draw.
+        overlay.objectLongPress.isEnabled = !selectsObjects && !allowsFingerDrawing && !usesSystemToolPicker
         #if targetEnvironment(simulator)
         overlay.shapeGesture.allowFingers(true)
         #else
@@ -267,8 +292,12 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         #endif
     }
 
+    /// PencilKit must not draw while the shape or the select tool reads the touches.
+    private var blocksInk: Bool { shape != nil || selectsObjects }
+
     func overlayDidDisappear(_ overlay: PageOverlayView) {
         visibleOverlays[overlay.pageID] = nil
+        if selection?.pageID == overlay.pageID { clearSelection(notify: true) }
         if usesSystemToolPicker { toolPicker.removeObserver(overlay.canvas) }
         // SPEC, "Data safety": a changed page is also saved when its canvas leaves the screen.
         // Once that is done, drawings that are saved and off screen are dropped from memory.
@@ -450,7 +479,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     }
 
     private func restoreDrawing(on overlay: PageOverlayView) {
-        overlay.canvas.drawingGestureRecognizer.isEnabled = shape == nil
+        overlay.canvas.drawingGestureRecognizer.isEnabled = !blocksInk
     }
 
     private func showSnapPreview(_ shape: SnapResult, on overlay: PageOverlayView) {
