@@ -36,11 +36,14 @@ final class UndoRoutingView: UIView {
     }
 }
 
-/// Shows a notebook's PDF with a canvas over every visible page.
+/// Shows a notebook's PDF with a canvas over every visible page, or a whiteboard: one overlay
+/// in board mode that fills the editor (its canvas scrolls and zooms the board itself).
 final class NotebookEditorViewController: UIViewController, UIGestureRecognizerDelegate, UIPencilInteractionDelegate {
     private let notebook: Notebook
     private let coordinator: EditorCoordinator
     private let pdfView = PDFView()
+    /// The whiteboard's overlay; nil for a notebook.
+    private var board: PageOverlayView?
     private let search: DocumentSearch
     private let navigator: PageNavigator
     private var didSetZoomLimits = false
@@ -63,8 +66,12 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     /// PDFView scrolls with a scroll view of its own, its direct subview.
     private var pdfScrollView: UIScrollView? {
-        pdfView.subviews.lazy.compactMap { $0 as? UIScrollView }.first
+        guard board == nil else { return nil }
+        return pdfView.subviews.lazy.compactMap { $0 as? UIScrollView }.first
     }
+
+    /// What scrolls the content: PDFView's scroll view, or the whiteboard's canvas.
+    private var contentScrollView: UIScrollView? { board?.canvas ?? pdfScrollView }
 
     private func applyTopInset() {
         guard let scrollView = pdfScrollView, scrollView.contentInset.top != topInset else { return }
@@ -127,6 +134,15 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             MainActor.assumeIsolated { self?.keepTextAboveKeyboard(keyboardFrame: frame) }
         }
 
+        if notebook.meta.isWhiteboard, let page = notebook.pages.first {
+            let overlay = coordinator.makeOverlay(pageID: page.id, boardSize: CGSize(width: page.size.width, height: page.size.height))
+            overlay.frame = view.bounds
+            overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.addSubview(overlay)
+            board = overlay
+            return  // shown once it has its size (viewDidLayoutSubviews)
+        }
+
         pdfView.frame = view.bounds
         pdfView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         pdfView.backgroundColor = .systemGray5
@@ -166,6 +182,22 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        if let board {
+            guard !didSetZoomLimits, board.bounds.width > 0 else { return }
+            didSetZoomLimits = true
+            board.layoutIfNeeded()
+            // Size and zoom first, then the drawing (SPEC, M2 lesson): place the board, then
+            // let the coordinator give the canvas its ink.
+            if let position = pendingPosition {
+                pendingPosition = nil
+                board.showBoard(at: position.point, zoom: position.zoom)
+            } else {
+                board.showBoardCenter()
+            }
+            coordinator.zoomDidChange(to: board.canvas.zoomScale)
+            coordinator.overlayDidAppear(board)
+            return
+        }
         applyTopInset()  // PDFView may reset its scroll view's inset when it lays out
         if !didSetZoomLimits, pdfView.document != nil, pdfView.scaleFactorForSizeToFit > 0 {
             didSetZoomLimits = true
@@ -309,7 +341,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     /// Scrolls the page up when the on-screen keyboard would cover the text box being typed in.
     private func keepTextAboveKeyboard(keyboardFrame: CGRect?) {
         guard let keyboardFrame, let textView = coordinator.editingTextView, let window = view.window,
-            let scrollView = pdfScrollView
+            let scrollView = contentScrollView
         else { return }
         let box = textView.convert(textView.bounds, to: window)
         let overlap = box.maxY + 24 - keyboardFrame.minY
@@ -333,6 +365,10 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     /// the zoom, so coming back to the tab shows the same spot.
     func currentPosition() -> TabPosition? {
         guard didSetZoomLimits else { return pendingPosition }  // not laid out yet: keep the old one
+        if let board {
+            // The board point at the top-left corner, in page points, and the zoom.
+            return TabPosition(pageID: board.pageID, point: board.visibleBoardRect.origin, zoom: board.canvas.zoomScale)
+        }
         let topLeft = CGPoint(x: pdfView.bounds.minX, y: pdfView.bounds.minY + topInset)
         guard let page = pdfView.page(for: topLeft, nearest: true), let id = notebook.pageID(for: page) else { return nil }
         return TabPosition(pageID: id, point: pdfView.convert(topLeft, to: page), zoom: pdfView.scaleFactor)
@@ -359,6 +395,10 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     /// The page in the middle of the visible area (below the toolbar) and that point on it,
     /// in page coordinates. New images go there.
     func pageAtScreenCenter() -> (id: UUID, point: CGPoint)? {
+        if let board {
+            let visible = board.visibleBoardRect
+            return (board.pageID, CGPoint(x: visible.midX, y: visible.midY))
+        }
         let visible = pdfView.bounds.inset(by: UIEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0))
         let center = CGPoint(x: visible.midX, y: visible.midY)
         guard let page = pdfView.page(for: center, nearest: true), let id = notebook.pageID(for: page) else { return nil }
@@ -390,7 +430,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     private func pasteText(_ text: TextObject, width: CGFloat?, at target: (id: UUID, point: CGPoint)?) {
         guard let target = target ?? pageAtScreenCenter(),
-            let pageSize = coordinator.visibleOverlays[target.id]?.bounds.size
+            let pageSize = coordinator.visibleOverlays[target.id]?.pageSize
         else { return }
         coordinator.pasteText(text, width: width, on: target.id, at: target.point, pageSize: pageSize)
     }

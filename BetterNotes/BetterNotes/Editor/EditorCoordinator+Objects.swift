@@ -171,7 +171,7 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
     private func frame(for drag: ObjectDrag, translation: CGPoint, on overlay: PageOverlayView) -> CGRect {
         let original = drag.original.frame
         guard let handle = drag.handle else {
-            return ObjectEditing.moved(original, by: translation, pageSize: overlay.bounds.size)
+            return ObjectEditing.moved(original, by: translation, pageSize: overlay.pageSize)
         }
         if case .text(let text) = drag.original.content {
             var frame = ObjectEditing.resized(original, handle: handle, by: translation, minimumWidth: TextBoxLayout.minimumWidth)
@@ -186,7 +186,7 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
     /// something a page can take.
     @objc func objectLongPressed(_ gesture: UILongPressGestureRecognizer) {
         guard gesture.state == .began, let overlay = gesture.view as? PageOverlayView else { return }
-        let point = gesture.location(in: overlay)
+        let point = gesture.location(in: overlay.pageSpace)
         if let editing = textEditing, editing.pageID == overlay.pageID, let view = editing.view, view.frame.contains(point) {
             return  // the text view has its own long press (cursor, selection)
         }
@@ -203,7 +203,7 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
         endTextEditing()
         clearSelection(notify: true)
         pasteTarget = PasteTarget(pageID: overlay.pageID, point: point)
-        overlay.interactions.compactMap { $0 as? UIEditMenuInteraction }.first?.presentEditMenu(
+        overlay.editingHost.interactions.compactMap { $0 as? UIEditMenuInteraction }.first?.presentEditMenu(
             with: UIEditMenuConfiguration(identifier: Self.pasteMenuID, sourcePoint: point))
     }
 
@@ -223,14 +223,14 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
     /// what is in it and where it points.
     func presentEditMenu(on overlay: PageOverlayView) {
         guard let object = selectedObject(), selection?.pageID == overlay.pageID,
-            let interaction = overlay.interactions.compactMap({ $0 as? UIEditMenuInteraction }).first
+            let interaction = overlay.editingHost.interactions.compactMap({ $0 as? UIEditMenuInteraction }).first
         else { return }
         let point = CGPoint(x: object.frame.midX, y: object.frame.minY)
         interaction.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
     }
 
     private func dismissEditMenu(on overlay: PageOverlayView) {
-        overlay.interactions.compactMap { $0 as? UIEditMenuInteraction }.first?.dismissMenu()
+        overlay.editingHost.interactions.compactMap { $0 as? UIEditMenuInteraction }.first?.dismissMenu()
     }
 
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, targetRectFor configuration: UIEditMenuConfiguration) -> CGRect {
@@ -334,7 +334,7 @@ extension EditorCoordinator: UIEditMenuInteractionDelegate {
     private func duplicate(_ object: PageObject, on pageID: UUID) {
         guard let overlay = visibleOverlays[pageID] else { return }
         var copy = object.withNewID()
-        copy.frame = ObjectEditing.moved(object.frame, by: CGPoint(x: 16, y: 16), pageSize: overlay.bounds.size)
+        copy.frame = ObjectEditing.moved(object.frame, by: CGPoint(x: 16, y: 16), pageSize: overlay.pageSize)
         notebook.addObject(copy, to: pageID, actionName: "Duplicate")
         select(copy, on: overlay)
         presentEditMenu(on: overlay)

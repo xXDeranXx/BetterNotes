@@ -48,6 +48,47 @@ struct NewNotebookSheet: View {
     }
 }
 
+/// A new whiteboard: a title, the background and a cover color. The board itself is always
+/// 10000 x 10000 pt (`Whiteboard.size`).
+struct NewWhiteboardSheet: View {
+    let create: (_ title: String, _ background: BoardBackground, _ color: String) -> Void
+    let cancel: () -> Void
+
+    @State private var title = ""
+    @State private var background = BoardBackground.dots
+    @State private var color = LibraryModel.coverColors[0]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Title") { TextField("Whiteboard", text: $title) }
+                Section("Background") {
+                    Picker("Background", selection: $background) {
+                        ForEach(BoardBackground.allCases) { Label($0.displayName, systemImage: $0.symbol).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+                Section("Cover color") {
+                    CoverColorPicker(selection: $color)
+                }
+            }
+            .navigationTitle("New Whiteboard")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                        create(name.isEmpty ? "Whiteboard" : name, background, color)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
 struct CoverColorPicker: View {
     @Binding var selection: String
 

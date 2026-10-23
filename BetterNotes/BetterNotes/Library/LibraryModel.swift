@@ -261,6 +261,20 @@ final class LibraryModel {
         }
     }
 
+    func createWhiteboard(title: String, background: BoardBackground, coverColor: String) async -> NotebookPackage? {
+        let parent = folder
+        do {
+            let package = try await Task.detached {
+                try NotebookPackage.createWhiteboard(in: parent, title: title, background: background, coverColor: coverColor)
+            }.value
+            await reload()
+            return package
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     /// A new notebook in the folder on screen from scanned pages, titled "Scan <date>".
     func createNotebookFromScan(_ jpegs: [Data]) async -> NotebookPackage? {
         let parent = folder, title = ScanPages.notebookTitle()

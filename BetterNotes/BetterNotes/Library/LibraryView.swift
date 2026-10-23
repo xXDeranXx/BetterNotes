@@ -12,6 +12,7 @@ struct LibraryView: View {
     @State private var isPickingPDF = false
     @State private var isDropTargeted = false
     @State private var isCreatingNotebook = false
+    @State private var isCreatingWhiteboard = false
     @State private var prompt: NamePrompt?
     @State private var promptText = ""
     @State private var moveRequest: MoveRequest?
@@ -119,6 +120,18 @@ struct LibraryView: View {
                     }
                 },
                 cancel: { isCreatingNotebook = false })
+        }
+        .sheet(isPresented: $isCreatingWhiteboard) {
+            NewWhiteboardSheet(
+                create: { title, background, color in
+                    isCreatingWhiteboard = false
+                    Task {
+                        guard let package = await model.createWhiteboard(title: title, background: background, coverColor: color)
+                        else { return }
+                        open(NotebookSummary.placeholder(for: package))
+                    }
+                },
+                cancel: { isCreatingWhiteboard = false })
         }
         .sheet(item: $styleRequest) { folder in
             FolderStyleSheet(
@@ -435,6 +448,7 @@ struct LibraryView: View {
                 }
                 Menu {
                     Button("New Notebook", systemImage: "square.and.pencil") { isCreatingNotebook = true }
+                    Button("New Whiteboard", systemImage: "scribble.variable") { isCreatingWhiteboard = true }
                     Button("New Folder", systemImage: "folder.badge.plus") {
                         promptText = ""
                         prompt = .newFolder

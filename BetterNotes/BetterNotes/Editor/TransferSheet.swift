@@ -16,7 +16,9 @@ struct TransferSheet: View {
         self.pageCount = pageCount
         self.choose = choose
         self.cancel = cancel
-        notebooks = LibraryScanner.allNotebooks(under: LibraryLocation.documents.root).filter { $0.problem == nil }.map(\.url).filter {
+        // Not whiteboards: they have no pages to add to.
+        notebooks = LibraryScanner.allNotebooks(under: LibraryLocation.documents.root)
+            .filter { $0.problem == nil && !$0.isWhiteboard }.map(\.url).filter {
             $0.standardizedFileURL.resolvingSymlinksInPath() != sourceURL.standardizedFileURL.resolvingSymlinksInPath()
         }
     }

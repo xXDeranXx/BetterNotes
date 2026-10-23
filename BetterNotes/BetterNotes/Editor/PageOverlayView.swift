@@ -55,40 +55,104 @@ final class PassthroughView: UIView {
     required init?(coder: NSCoder) { fatalError("not used") }
 }
 
+/// A layer that holds interactive views (a text box being typed in) but lets every touch that
+/// misses them through, like `pointer-events: none` on a container in CSS.
+final class PassthroughContainer: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit === self ? nil : hit
+    }
+}
+
 /// What PDFKit puts on top of each visible page (SPEC, decision 3). From bottom to top:
 /// an objects layer (images and text boxes, milestone 8), the canvas, and a preview layer (live shapes,
 /// milestone 7). Later features add content to a layer, not new view structure.
+///
+/// **Board mode** (whiteboards, `boardSize` set): the overlay fills the editor instead of a
+/// page, and the canvas is its own scroll view over the whole board (PencilKit then renders
+/// only what is on screen, see "Whiteboard spike"). The objects, preview and editing layers are
+/// board-sized "page space" views that follow the canvas's scroll and zoom
+/// (`syncBoardLayers`), so everything that works in page points (gestures, objects, shapes,
+/// text) works unchanged: it reads and writes in `pageSpace`. In a notebook `pageSpace` is the
+/// overlay itself, so nothing changes there.
 final class PageOverlayView: UIView {
     let pageID: UUID
+    /// The whiteboard's size in points; nil for a notebook page.
+    let boardSize: CGSize?
+    var isBoard: Bool { boardSize != nil }
     let objectsLayer = PassthroughView()
-    private(set) var canvas = PageOverlayView.makeCanvas()
+    private(set) var canvas: PageCanvasView
     let previewLayer = PassthroughView()
+    /// Board mode only: holds the text box being typed in, above the ink, in page space.
+    let editingLayer = PassthroughContainer()
 
-    init(pageID: UUID) {
+    /// The view whose coordinates are page points: the overlay on a notebook page, the
+    /// board-sized layers on a whiteboard.
+    var pageSpace: UIView { isBoard ? objectsLayer : self }
+    /// Where interactive page-space views go (the text box being typed in, the edit menu).
+    var editingHost: UIView { isBoard ? editingLayer : self }
+
+    init(pageID: UUID, boardSize: CGSize? = nil) {
         self.pageID = pageID
+        self.boardSize = boardSize
+        canvas = Self.makeCanvas(boardSize: boardSize)
         super.init(frame: .zero)
 
-        for layer in [objectsLayer, canvas, previewLayer] as [UIView] {
+        let layers: [UIView] = boardSize == nil
+            ? [objectsLayer, canvas, previewLayer]
+            : [objectsLayer, canvas, previewLayer, editingLayer]
+        for layer in layers {
             layer.frame = bounds
             addSubview(layer)
         }
-        // The canvas is laid out by hand (see `layoutSubviews`); the other layers follow the page.
-        for layer in [objectsLayer, previewLayer] {
-            layer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        if let boardSize {
+            backgroundColor = .white
+            canvas.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            // Page space: board-sized, pinned at the top-left corner (anchor 0, 0), so that its
+            // position is simply minus the canvas's scroll offset and its transform the zoom.
+            for layer in [objectsLayer, previewLayer, editingLayer] {
+                layer.layer.anchorPoint = .zero
+                layer.bounds = CGRect(origin: .zero, size: boardSize)
+                layer.center = .zero
+            }
+        } else {
+            // The canvas is laid out by hand (see `layoutSubviews`); the other layers follow the page.
+            for layer in [objectsLayer, previewLayer] {
+                layer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            }
         }
         setUpShapePreview()
+        for gesture in [shapeGesture, objectGesture, textTap, holdGesture] as [PageSpaceGesture] {
+            gesture.pageSpace = pageSpace
+        }
     }
+
+    /// The size of the page in points (the board on a whiteboard).
+    var pageSize: CGSize { boardSize ?? bounds.size }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    private static func makeCanvas() -> PageCanvasView {
+    private static func makeCanvas(boardSize: CGSize?) -> PageCanvasView {
         let canvas = PageCanvasView()
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         // Pages stay white in dark mode, so ink must be drawn as on white paper.
         canvas.overrideUserInterfaceStyle = .light
-        canvas.isScrollEnabled = false
+        canvas.isScrollEnabled = boardSize != nil
         canvas.contentInsetAdjustmentBehavior = .never
+        if let boardSize {
+            canvas.contentSize = boardSize
+            canvas.minimumZoomScale = Whiteboard.minimumZoom
+            canvas.maximumZoomScale = Whiteboard.maximumZoom
+            canvas.bouncesZoom = false
+            canvas.showsHorizontalScrollIndicator = false
+            canvas.showsVerticalScrollIndicator = false
+            // Fingers scroll and zoom; the Pencil never does, also while PencilKit's drawing is
+            // switched off for the shape, select and text tools (it would scroll the board).
+            let fingers = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+            canvas.panGestureRecognizer.allowedTouchTypes = fingers
+            canvas.pinchGestureRecognizer?.allowedTouchTypes = fingers
+        }
         #if targetEnvironment(simulator)
         canvas.drawingPolicy = .anyInput  // the simulator has no Pencil
         #else
@@ -114,7 +178,10 @@ final class PageOverlayView: UIView {
     func replaceCanvas() -> PageCanvasView {
         retireOldCanvas()  // a quick second undo: the first old canvas goes now
         let old = canvas
-        let new = Self.makeCanvas()
+        // Taken first: setting up the new canvas scrolls it, and `syncBoardLayers` then moves the
+        // retired canvas along (measured: the old place was lost that way).
+        let boardZoom = old.zoomScale, boardOffset = old.contentOffset
+        let new = Self.makeCanvas(boardSize: boardSize)
         new.delegate = old.delegate
         new.tool = old.tool
         new.isRulerActive = old.isRulerActive
@@ -131,8 +198,20 @@ final class PageOverlayView: UIView {
         new.alpha = Self.waitingAlpha
         retiredCanvas = old
         canvas = new
+        if isBoard {
+            // The same place on the board, at the same zoom, before the drawing (M2 lesson).
+            new.frame = bounds
+            new.zoomScale = boardZoom
+        }
         setNeedsLayout()
         layoutIfNeeded()  // size and zoom first, then the drawing (SPEC, M2 lesson)
+        if isBoard {
+            // Only after the layout has the content grown with the zoom; set earlier, the offset
+            // was cut back to the unzoomed board (measured in a test).
+            new.layoutIfNeeded()
+            new.contentOffset = boardOffset
+            syncBoardLayers()
+        }
         let timeout = Self.retireTimeout
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self, weak old] in
             guard let self, let old, self.retiredCanvas === old else { return }
@@ -243,6 +322,11 @@ final class PageOverlayView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if isBoard {
+            // The canvas scrolls and zooms by itself and stays sharp; no `renderScale` here.
+            syncBoardLayers()
+            return
+        }
         let scale = renderScale
         canvas.transform = .identity  // frame and bounds are only meaningful without a transform
         canvas.bounds = CGRect(
@@ -265,6 +349,79 @@ final class PageOverlayView: UIView {
         for case let box as TextBoxView in objectsLayer.subviews where box.contentScaleFactor != screenScale * scale {
             box.contentScaleFactor = screenScale * scale
         }
+    }
+
+    // MARK: Board mode
+
+    /// Moves the page-space layers with the canvas (called on every scroll and zoom), and a
+    /// canvas that is being retired along with them.
+    func syncBoardLayers() {
+        guard isBoard else { return }
+        let zoom = canvas.zoomScale
+        let offset = canvas.contentOffset
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for layer in [objectsLayer, previewLayer, editingLayer] {
+            layer.transform = CGAffineTransform(scaleX: zoom, y: zoom)
+            layer.center = CGPoint(x: -offset.x, y: -offset.y)
+        }
+        if let retiredCanvas {
+            if retiredCanvas.zoomScale != zoom { retiredCanvas.zoomScale = zoom }
+            retiredCanvas.contentOffset = offset
+        }
+        CATransaction.commit()
+    }
+
+    /// The board's pattern, behind the objects (they and the ink lie on top of it).
+    var boardBackground: BoardBackground = .plain {
+        didSet { if boardBackground != oldValue { updateBoardSharpness() } }
+    }
+    private var patternScale: CGFloat = 0
+
+    /// After a zoom ends: the pattern and hand-drawn layers are redrawn for the new zoom, so they
+    /// are as sharp as the ink. (Not on every frame of a pinch: that would cost CPU.)
+    func updateBoardSharpness() {
+        guard isBoard else { return }
+        let screenScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
+        let scale = screenScale * max(1, canvas.zoomScale.rounded(.up))
+        if scale != patternScale || objectsLayer.backgroundColor == nil && boardBackground != .plain {
+            patternScale = scale
+            objectsLayer.backgroundColor = Whiteboard.patternTile(boardBackground, scale: scale).map(UIColor.init(patternImage:)) ?? .clear
+        }
+        for layer in [fillPreview, outlinePreview, selectionOutline, selectionHandles] where layer.contentsScale != scale {
+            layer.contentsScale = scale
+        }
+        for case let box as TextBoxView in objectsLayer.subviews where box.contentScaleFactor != scale {
+            box.contentScaleFactor = scale
+        }
+    }
+
+    /// The part of the board on screen, in page points.
+    var visibleBoardRect: CGRect {
+        let zoom = max(canvas.zoomScale, 0.01)
+        return CGRect(
+            x: canvas.contentOffset.x / zoom, y: canvas.contentOffset.y / zoom,
+            width: canvas.bounds.width / zoom, height: canvas.bounds.height / zoom)
+    }
+
+    /// Shows the board at `zoom` (clamped) with the page point `point` at the top-left corner.
+    func showBoard(at point: CGPoint, zoom: CGFloat) {
+        guard let boardSize else { return }
+        let zoom = min(max(zoom, Whiteboard.minimumZoom), Whiteboard.maximumZoom)
+        if canvas.zoomScale != zoom { canvas.zoomScale = zoom }
+        let maxX = max(0, boardSize.width * zoom - canvas.bounds.width)
+        let maxY = max(0, boardSize.height * zoom - canvas.bounds.height)
+        canvas.contentOffset = CGPoint(x: min(max(point.x * zoom, 0), maxX), y: min(max(point.y * zoom, 0), maxY))
+        syncBoardLayers()
+        updateBoardSharpness()
+    }
+
+    /// The middle of the board in the middle of the screen, at zoom 1 (where a new board opens).
+    func showBoardCenter() {
+        guard let boardSize else { return }
+        showBoard(
+            at: CGPoint(x: (boardSize.width - canvas.bounds.width) / 2, y: (boardSize.height - canvas.bounds.height) / 2),
+            zoom: 1)
     }
 
     // MARK: Objects (M8)
@@ -302,6 +459,7 @@ final class PageOverlayView: UIView {
         }
         for leftover in remaining.values { leftover.removeFromSuperview() }
         setNeedsLayout()  // new text boxes get their sharpness in layoutSubviews
+        if isBoard { updateBoardSharpness() }
     }
 
     /// Moves an object's view while it is dragged; the model changes when the drag ends.
@@ -370,6 +528,12 @@ final class PageOverlayView: UIView {
     var shapePreviewScale: CGFloat { outlinePreview.contentsScale }
 }
 
+/// A gesture that reports positions in page points, read in its `pageSpace` view (the overlay
+/// on a notebook page, the board-sized layers on a whiteboard).
+protocol PageSpaceGesture: AnyObject {
+    var pageSpace: UIView? { get set }
+}
+
 /// Follows one drag on the page while the shape tool is on.
 ///
 /// Gesture recognizers compete for a touch: by default, the first one that recognizes wins and
@@ -377,7 +541,10 @@ final class PageOverlayView: UIView {
 /// this recognizer starts the moment the Pencil touches down and wins; a finger still scrolls,
 /// because only the Pencil is allowed (fingers too when finger drawing is on, and in the
 /// simulator, which has no Pencil).
-final class ShapeDragGesture: UIGestureRecognizer {
+final class ShapeDragGesture: UIGestureRecognizer, PageSpaceGesture {
+    /// Positions are read in this view (page points); nil means the gesture's own view.
+    weak var pageSpace: UIView?
+
     private(set) var startLocation: CGPoint = .zero
     private var trackedTouch: UITouch?
 
@@ -389,7 +556,7 @@ final class ShapeDragGesture: UIGestureRecognizer {
             return
         }
         trackedTouch = touch
-        startLocation = touch.location(in: view)
+        startLocation = touch.location(in: pageSpace ?? view)
         state = .began
     }
 
@@ -415,7 +582,7 @@ final class ShapeDragGesture: UIGestureRecognizer {
     /// Where the tracked touch is now, in the page's points.
     var currentLocation: CGPoint {
         guard let trackedTouch, let view else { return startLocation }
-        return trackedTouch.location(in: view)
+        return trackedTouch.location(in: pageSpace ?? view)
     }
 
     /// Pencil only, or Pencil and fingers.
@@ -429,7 +596,10 @@ final class ShapeDragGesture: UIGestureRecognizer {
 /// Follows one drag on an object while the select tool is on (M8). Unlike the shape gesture
 /// it only starts when `shouldBegin` says the touch is on an object (or a handle): a finger
 /// that starts elsewhere fails it at once, so the page scrolls as usual.
-final class ObjectDragGesture: UIGestureRecognizer {
+final class ObjectDragGesture: UIGestureRecognizer, PageSpaceGesture {
+    /// Positions are read in this view (page points); nil means the gesture's own view.
+    weak var pageSpace: UIView?
+
     /// Asked with the touch's position in page points when a touch begins.
     var shouldBegin: ((CGPoint) -> Bool)?
     private(set) var startLocation: CGPoint = .zero
@@ -448,7 +618,7 @@ final class ObjectDragGesture: UIGestureRecognizer {
             if trackedTouch == nil { state = .failed } else { state = .cancelled }  // a pinch
             return
         }
-        let location = touch.location(in: view)
+        let location = touch.location(in: pageSpace ?? view)
         guard shouldBegin?(location) == true else {
             state = .failed
             return
@@ -485,7 +655,7 @@ final class ObjectDragGesture: UIGestureRecognizer {
     /// How far the touch moved since it began, in page points.
     var translation: CGPoint {
         guard let trackedTouch, let view else { return .zero }
-        let now = trackedTouch.location(in: view)
+        let now = trackedTouch.location(in: pageSpace ?? view)
         return CGPoint(x: now.x - startLocation.x, y: now.y - startLocation.y)
     }
 }
@@ -494,7 +664,10 @@ final class ObjectDragGesture: UIGestureRecognizer {
 /// fired on the page in the simulator (PDFView's and PencilKit's gestures win over it), so this
 /// one is written like the drag gestures above: it watches one touch and recognizes on lift if
 /// the touch stayed put. A moving finger fails it, so the page still scrolls.
-final class PageTapGesture: UIGestureRecognizer {
+final class PageTapGesture: UIGestureRecognizer, PageSpaceGesture {
+    /// Positions are read in this view (page points); nil means the gesture's own view.
+    weak var pageSpace: UIView?
+
     private var trackedTouch: UITouch?
     private var startOnGlass: CGPoint = .zero
     private var startTime: TimeInterval = 0
@@ -515,7 +688,7 @@ final class PageTapGesture: UIGestureRecognizer {
         trackedTouch = touch
         startOnGlass = touch.location(in: nil)
         startTime = touch.timestamp
-        location = touch.location(in: view)
+        location = touch.location(in: pageSpace ?? view)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -526,7 +699,7 @@ final class PageTapGesture: UIGestureRecognizer {
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         guard let trackedTouch, touches.contains(trackedTouch) else { return }
-        location = trackedTouch.location(in: view)
+        location = trackedTouch.location(in: pageSpace ?? view)
         guard trackedTouch.timestamp - startTime < Self.maximumDuration else {
             state = .failed
             return
@@ -554,7 +727,10 @@ final class PageTapGesture: UIGestureRecognizer {
 /// still (`HoldDetector`, checked by a timer) and `shouldSnap` accepts the points as a shape.
 /// Then it begins, reports every move while the Pencil follows the shape, and ends on lift.
 /// A stroke that never snaps lets it fail quietly at the end; PencilKit keeps its stroke.
-final class HoldToSnapGesture: UIGestureRecognizer {
+final class HoldToSnapGesture: UIGestureRecognizer, PageSpaceGesture {
+    /// Positions are read in this view (page points); nil means the gesture's own view.
+    weak var pageSpace: UIView?
+
     /// The stroke's points so far, in the overlay's coordinates, which are page points.
     private(set) var points: [CGPoint] = []
     /// Where the Pencil was held, in page points.
@@ -578,7 +754,7 @@ final class HoldToSnapGesture: UIGestureRecognizer {
             return
         }
         trackedTouch = touch
-        points = [touch.location(in: view)]
+        points = [touch.location(in: pageSpace ?? view)]
         detector.reset()
         detector.add(touch.location(in: nil), at: touch.timestamp)
         scheduleHoldCheck()
@@ -591,7 +767,7 @@ final class HoldToSnapGesture: UIGestureRecognizer {
             // the screen shows; all of them keep a fast stroke's shape.
             let restBefore = detector.restTime
             for touch in event.coalescedTouches(for: trackedTouch) ?? [trackedTouch] {
-                points.append(touch.location(in: view))
+                points.append(touch.location(in: pageSpace ?? view))
                 // Stillness is judged on the glass (window points), not on the zoomed page.
                 detector.add(touch.location(in: nil), at: touch.timestamp)
             }
@@ -622,7 +798,7 @@ final class HoldToSnapGesture: UIGestureRecognizer {
     /// Where the tracked touch is now, in page points.
     var currentLocation: CGPoint {
         guard let trackedTouch, let view else { return holdLocation }
-        return trackedTouch.location(in: view)
+        return trackedTouch.location(in: pageSpace ?? view)
     }
 
     /// Checks again when the Pencil would have rested long enough (it may send no touches at
@@ -640,7 +816,7 @@ final class HoldToSnapGesture: UIGestureRecognizer {
         guard state == .possible, let trackedTouch,
             detector.isHolding(at: ProcessInfo.processInfo.systemUptime)
         else { return }
-        holdLocation = trackedTouch.location(in: view)
+        holdLocation = trackedTouch.location(in: pageSpace ?? view)
         if shouldSnap?(points) == true {
             state = .began
         } else {

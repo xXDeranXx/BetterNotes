@@ -77,6 +77,8 @@ struct EditorView: View {
         tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker
     }
 
+    private var isBoard: Bool { notebook.meta.isWhiteboard }
+
     /// The middle of the top bar, between the buttons on the left and on the right.
     private var barToolbarLength: CGFloat { max(0, screenWidth - 2 * 120) }
 
@@ -112,7 +114,7 @@ struct EditorView: View {
     private var editor: some View {
         NavigationStack {
             HStack(spacing: 0) {
-                if isSidebarVisible {
+                if isSidebarVisible && !isBoard {
                     HStack(spacing: 0) {
                         PageSidebar(
                             notebook: notebook, thumbnails: thumbnails, navigator: navigator,
@@ -217,10 +219,13 @@ struct EditorView: View {
     /// export and search.
     private var topBar: some View {
         EditorTopBar(theme: theme, scheme: colorScheme) {
-            barButton("Pages", "sidebar.left") {
-                withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
+            // A whiteboard is one big page: no page sidebar or grid.
+            if !isBoard {
+                barButton("Pages", "sidebar.left") {
+                    withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
+                }
+                barButton("Page Grid", "square.grid.2x2") { isShowingGrid = true }
             }
-            barButton("Page Grid", "square.grid.2x2") { isShowingGrid = true }
         } middle: {
             if isToolbarInBar {
                 PenToolbar(
@@ -233,9 +238,11 @@ struct EditorView: View {
                 barButton("Use Own Toolbar", "pencil.tip.crop.circle") { tools.settings.usesSystemToolPicker = false }
             }
             barButton("Export PDF", "square.and.arrow.up") { isExporting = true }
-            barButton("Search", "magnifyingglass") {
-                if isSearching { search.clear() }
-                isSearching.toggle()
+            if !isBoard {  // search finds text in a PDF; a whiteboard has none
+                barButton("Search", "magnifyingglass") {
+                    if isSearching { search.clear() }
+                    isSearching.toggle()
+                }
             }
         }
     }

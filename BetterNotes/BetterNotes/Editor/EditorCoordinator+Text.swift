@@ -112,7 +112,7 @@ extension EditorCoordinator: UITextViewDelegate {
         if let hit = ObjectEditing.object(at: point, in: boxes, slop: reach / 4) {
             beginTextEditing(hit, isNew: false, on: overlay)
         } else {
-            beginTextEditing(newTextBox(at: point, pageSize: overlay.bounds.size), isNew: true, on: overlay)
+            beginTextEditing(newTextBox(at: point, pageSize: overlay.pageSize), isNew: true, on: overlay)
         }
     }
 
@@ -136,7 +136,7 @@ extension EditorCoordinator: UITextViewDelegate {
         view.delegate = self
         view.frame = object.frame
         view.layer.borderWidth = 1 / max(zoom, 0.01)
-        overlay.addSubview(view)  // on top of everything, so it gets the touches
+        overlay.editingHost.addSubview(view)  // on top of everything, so it gets the touches
         overlay.objectViews[object.id]?.isHidden = true  // the text view shows the text now
         sharpen(view)
         textEditing = TextEditing(pageID: overlay.pageID, object: object, isNew: isNew, view: view)

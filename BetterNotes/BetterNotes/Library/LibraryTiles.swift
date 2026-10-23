@@ -58,7 +58,7 @@ struct NotebookTile: View {
                 if let problem = notebook.problem {
                     Text(problem).font(.caption2).foregroundStyle(.red).lineLimit(2).multilineTextAlignment(.center)
                 } else {
-                    Text("\(notebook.updatedAt.formatted(date: .abbreviated, time: .omitted)) · \(notebook.pageCount) \(notebook.pageCount == 1 ? "page" : "pages")")
+                    Text("\(notebook.updatedAt.formatted(date: .abbreviated, time: .omitted)) · \(notebook.kindDescription)")
                         .font(.caption).foregroundStyle(.secondary)
                     if let size { Text(StorageSize.format(size)).font(.caption).foregroundStyle(.secondary) }
                 }
@@ -196,7 +196,7 @@ struct NotebookRow: View {
                 if let problem = notebook.problem {
                     Text(problem).font(.caption).foregroundStyle(.red).lineLimit(1)
                 } else {
-                    Text("\(notebook.updatedAt.formatted(date: .abbreviated, time: .shortened)) · \(notebook.pageCount) \(notebook.pageCount == 1 ? "page" : "pages")")
+                    Text("\(notebook.updatedAt.formatted(date: .abbreviated, time: .shortened)) · \(notebook.kindDescription)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

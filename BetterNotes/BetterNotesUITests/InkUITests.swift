@@ -14,6 +14,7 @@ final class InkUITests: XCTestCase {
         app.launch()
         try undoneStrokeStaysGone(app)
         try shapeIsDrawnUndoneAndKept(app)
+        try whiteboardDrawsAndUndoes(app)
         try tabsKeepInkUndoAndTypingAndComeBackAfterRelaunch(app)  // last: it kills the app
     }
 }
@@ -65,6 +66,47 @@ extension InkUITests {
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.4), "stroke A is missing")
         XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.5), "the undone stroke B came back")
         XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.6), "stroke C is missing")
+    }
+}
+
+/// End to end on a whiteboard (board mode: the canvas is its own scroll view): ink lands where it
+/// is drawn, and an undone stroke stays gone when the next one is drawn (the canvas swap).
+extension InkUITests {
+    @MainActor
+    func whiteboardDrawsAndUndoes(_ app: XCUIApplication) throws {
+        showLibrary(app)
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
+        app.buttons["Add"].tap()
+        app.buttons["New Whiteboard"].firstMatch.tap()
+        let create = app.buttons["Create"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 10))
+        create.tap()
+        let undo = app.buttons["Undo"].firstMatch
+        XCTAssertTrue(undo.waitForExistence(timeout: 10))
+        sleep(2)
+        app.buttons["Lasso"].firstMatch.tap()
+        app.buttons["Pen"].firstMatch.tap()
+        let window = app.windows.firstMatch
+        func stroke(y: CGFloat) {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: y))
+                .press(forDuration: 0.1, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: y)))
+            sleep(1)
+        }
+        stroke(y: 0.4)
+        stroke(y: 0.5)
+        undo.tap()
+        sleep(1)
+        stroke(y: 0.6)
+        sleep(1)
+        let shot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: shot)
+        attachment.name = "whiteboard"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let pixels = try XCTUnwrap(Pixels(shot.image))
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.4), "whiteboard: stroke A is missing")
+        XCTAssertFalse(pixels.hasDarkLine(atX: 0.6, nearY: 0.5), "whiteboard: the undone stroke came back")
+        XCTAssertTrue(pixels.hasDarkLine(atX: 0.6, nearY: 0.6), "whiteboard: stroke C is missing")
     }
 }
 

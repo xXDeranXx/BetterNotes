@@ -12,6 +12,13 @@ nonisolated struct NotebookSummary: Identifiable, Equatable, Sendable {
     var updatedAt: Date
     var pageCount: Int
     var problem: String?
+    /// A whiteboard (format version 5) instead of a notebook.
+    var isWhiteboard = false
+
+    /// Under the title: "3 pages", or "Whiteboard".
+    var kindDescription: String {
+        isWhiteboard ? "Whiteboard" : "\(pageCount) \(pageCount == 1 ? "page" : "pages")"
+    }
 
     var id: URL { url }
 }
@@ -84,7 +91,7 @@ nonisolated enum LibraryScanner {
             return NotebookSummary(
                 url: url, notebookID: meta.id, title: meta.title, coverColor: meta.coverColor,
                 createdAt: meta.createdAt, updatedAt: meta.updatedAt, pageCount: meta.pages.count,
-                problem: nil)
+                problem: nil, isWhiteboard: meta.isWhiteboard)
         } catch {
             return NotebookSummary(
                 url: url, notebookID: nil, title: fallbackTitle, coverColor: "#8E8E93",

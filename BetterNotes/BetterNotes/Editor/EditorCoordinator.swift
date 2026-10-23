@@ -133,7 +133,14 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
 
     func pdfView(_ pdfView: PDFView, overlayViewFor page: PDFPage) -> UIView? {
         guard let pageID = pageID(for: page) else { return nil }
-        let overlay = PageOverlayView(pageID: pageID)
+        return makeOverlay(pageID: pageID)
+    }
+
+    /// A page's overlay with its gestures wired to this coordinator. With `boardSize` it is a
+    /// whiteboard's overlay (board mode, see `PageOverlayView`); the editor shows it itself.
+    func makeOverlay(pageID: UUID, boardSize: CGSize? = nil) -> PageOverlayView {
+        let overlay = PageOverlayView(pageID: pageID, boardSize: boardSize)
+        overlay.boardBackground = notebook.meta.boardBackground ?? .plain
         overlay.canvas.delegate = self
         overlay.renderScale = currentRenderScale
         overlay.shapeGesture.addTarget(self, action: #selector(shapeDragged(_:)))
@@ -149,7 +156,7 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         }
         overlay.objectLongPress.addTarget(self, action: #selector(objectLongPressed(_:)))
         overlay.textTap.addTarget(self, action: #selector(textTapped(_:)))
-        overlay.addInteraction(UIEditMenuInteraction(delegate: self))
+        overlay.editingHost.addInteraction(UIEditMenuInteraction(delegate: self))
         return overlay
     }
 
@@ -298,8 +305,10 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         overlay.objectGesture.isEnabled = selectsObjects
         overlay.textTap.isEnabled = placesText
         // With the select and text tools the canvas takes no touches at all: PencilKit's own
-        // tap handling showed a Paste bubble and took the keyboard from a new text box.
-        let canvasTakesTouches = !(selectsObjects || placesText)
+        // tap handling showed a Paste bubble and took the keyboard from a new text box. On a
+        // whiteboard the canvas is the scroll view, so it keeps its touches (fingers scroll);
+        // only its drawing is off (above).
+        let canvasTakesTouches = overlay.isBoard || !(selectsObjects || placesText)
         if canvas.isUserInteractionEnabled != canvasTakesTouches { canvas.isUserInteractionEnabled = canvasTakesTouches }
         // A finger long press selects an object, or offers Paste on an empty spot; not while
         // fingers draw. With the select tool it only offers Paste (drags own the objects there).
@@ -337,6 +346,38 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
             await notebook.saveChanges()
             notebook.evictOffscreenDrawings()
         }
+    }
+
+    // MARK: Whiteboard scrolling
+
+    /// The board overlay whose canvas is this scroll view (nil for notebook pages, whose canvases
+    /// do not scroll).
+    private func boardOverlay(for scrollView: UIScrollView) -> PageOverlayView? {
+        visibleOverlays.values.first { $0.isBoard && $0.canvas === scrollView }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        boardOverlay(for: scrollView)?.syncBoardLayers()
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        guard let overlay = boardOverlay(for: scrollView) else { return }
+        overlay.syncBoardLayers()
+        zoomDidChange(to: scrollView.zoomScale)  // selection handles keep their size on screen
+    }
+
+    func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        boardOverlay(for: scrollView)?.updateBoardSharpness()
+    }
+
+    /// A canvas swap in progress (after undo) ends when the board starts to move, so the old and
+    /// the new canvas never show the ink at two places.
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        boardOverlay(for: scrollView)?.retireOldCanvas()
+    }
+
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        boardOverlay(for: scrollView)?.retireOldCanvas()
     }
 
     private func show(_ drawing: PKDrawing, in canvas: PKCanvasView) {

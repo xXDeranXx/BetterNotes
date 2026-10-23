@@ -77,6 +77,12 @@ struct ExportSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                if notebook.meta.isWhiteboard {
+                    // One page around everything on the board; nothing to choose.
+                    ContentUnavailableView(
+                        "The whole whiteboard", systemImage: "scribble",
+                        description: Text("One PDF page around everything you drew or placed, with the background. The whiteboard itself is not changed."))
+                } else {
                 Picker("Pages", selection: $scope) {
                     Text("All \(notebook.pages.count) Pages").tag(Scope.all)
                     Text("Choose Pages").tag(Scope.choose)
@@ -90,6 +96,7 @@ struct ExportSheet: View {
                     ContentUnavailableView(
                         "The whole notebook", systemImage: "doc.richtext",
                         description: Text("Pages stay sharp, text stays selectable, and your ink is added on top. The notebook itself is not changed."))
+                }
                 }
 
                 footer
