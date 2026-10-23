@@ -314,16 +314,18 @@ struct EditorCoordinatorTests {
         var settings = ToolSettings()
         settings.selected = .pen(.pen)
         setup.coordinator.apply(settings: settings, isRulerActive: false)
-        let toolBefore = overlay.canvas.tool
+
+        // A marker tool put on the canvas by hand stands in for "whatever the canvas holds now".
+        overlay.canvas.tool = PKInkingTool(.marker, color: .red, width: 20)
 
         // SwiftUI refreshes after every undo and stroke and calls apply again with the same values.
         setup.coordinator.apply(settings: settings, isRulerActive: false)
-        #expect(overlay.canvas.tool === toolBefore)
+        #expect((overlay.canvas.tool as? PKInkingTool)?.inkType == .marker)  // untouched
 
         settings.setWidth(8, for: .pen)  // a real change goes through
         setup.coordinator.apply(settings: settings, isRulerActive: false)
-        #expect(overlay.canvas.tool !== toolBefore)
-        #expect((overlay.canvas.tool as? PKInkingTool)?.width == 8)
+        let pen = try #require(overlay.canvas.tool as? PKInkingTool)
+        #expect(pen.inkType == .pen && pen.width == 8)
     }
 
     @Test func switchingToTheEraserChangesEveryCanvas() throws {
