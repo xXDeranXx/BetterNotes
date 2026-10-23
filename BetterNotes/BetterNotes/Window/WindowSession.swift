@@ -39,6 +39,9 @@ final class WindowSession {
     /// The saves that release old tabs run one after another; tests wait for this.
     @ObservationIgnored private(set) var releaseTask: Task<Void, Never>?
 
+    /// Whiteboard spike (temporary, see `Spike/`): shown instead of the library.
+    var showsWhiteboardSpike = false
+
     /// The window's scene, so another window can bring this one forward (`WindowDirectory`).
     @ObservationIgnored weak var scene: UIWindowScene?
 

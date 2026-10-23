@@ -110,7 +110,10 @@ struct RootView: View {
     /// in or out on top of it (see `WindowSession.openAnimated`); otherwise it is one or the other.
     private var content: some View {
         ZStack {
-            if session.notebook == nil || session.isOpening || session.isClosing {
+            if session.showsWhiteboardSpike && session.notebook == nil {
+                // Temporary (see `Spike/`): in the window, not a cover, so the debug panel shows.
+                WhiteboardSpikeView { session.showsWhiteboardSpike = false }
+            } else if session.notebook == nil || session.isOpening || session.isClosing {
                 LibraryView()
             }
             if let notebook = session.notebook {

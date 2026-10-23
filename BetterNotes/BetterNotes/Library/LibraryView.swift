@@ -27,6 +27,7 @@ struct LibraryView: View {
     @State private var isScanning = false
     @State private var infoMessage: String?
     @State private var isReminderDismissed = false
+    @AppStorage(DebugOverlay.settingKey) private var showsDebugOverlay = false
 
     private struct BackupRequest: Identifiable {
         let id = UUID()
@@ -446,6 +447,10 @@ struct LibraryView: View {
                         } else {
                             model.errorMessage = DocumentScanner.unavailableMessage
                         }
+                    }
+                    if showsDebugOverlay {
+                        // Temporary (see `Spike/`): only while the debug overlay is on.
+                        Button("Whiteboard Spike", systemImage: "scribble") { session.showsWhiteboardSpike = true }
                     }
                     Divider()
                     Button("Back Up Library…", systemImage: "externaldrive") {
