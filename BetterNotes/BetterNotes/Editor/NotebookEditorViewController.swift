@@ -116,7 +116,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
             let scene = (note.object as AnyObject?).map(ObjectIdentifier.init)
             MainActor.assumeIsolated {
                 guard let self, scene == self.view.window?.windowScene.map(ObjectIdentifier.init) else { return }  // only this window
-                self.coordinator.endTextEditing()
+                self.finishTextEditing()
             }
         }
         NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) {
@@ -220,7 +220,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        coordinator.endTextEditing()
+        finishTextEditing()
         coordinator.toolPicker.setVisible(false, forFirstResponder: view)
     }
 
@@ -266,11 +266,22 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
         present(content, animated: true)
     }
 
+    /// Puts the text box being typed in into the model, and saves if that changed anything.
+    /// Called before anything that saves, closes or undoes, so typed text is never lost or
+    /// added after the last save.
+    func finishTextEditing() {
+        guard coordinator.editingTextView != nil else { return }
+        coordinator.endTextEditing()
+        if notebook.hasUnsavedChanges { BackgroundSave.flush(notebook) }
+    }
+
     @objc private func undoTapped() {
+        finishTextEditing()  // undo then takes back the typing as one step
         if toolSettings.twoFingerTapUndoes, notebook.undoManager.canUndo { notebook.undoManager.undo() }
     }
 
     @objc private func redoTapped() {
+        finishTextEditing()
         if toolSettings.threeFingerTapRedoes, notebook.undoManager.canRedo { notebook.undoManager.redo() }
     }
 

@@ -119,7 +119,10 @@ struct EditorView: View {
                 }
                 .onChange(of: scenePhase) { _, phase in
                     // Leaving the foreground (home, app switcher, locking): save right away.
-                    if phase != .active { BackgroundSave.flush(notebook) }
+                    if phase != .active {
+                        bridge.controller?.finishTextEditing()
+                        BackgroundSave.flush(notebook)
+                    }
                 }
                 // New pages go after the page that is on screen, or at the end.
                 .pageInsertion(kind: $insertKind, actions: actions, reveal: true) {
@@ -156,7 +159,10 @@ struct EditorView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarLeading) {
-                        Button("Library", systemImage: "chevron.backward") { Task { await session.closeAnimated() } }
+                        Button("Library", systemImage: "chevron.backward") {
+                            bridge.controller?.finishTextEditing()  // typed text goes into the closing save
+                            Task { await session.closeAnimated() }
+                        }
                         Button("Pages", systemImage: "sidebar.left") {
                             withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
                         }
@@ -174,9 +180,15 @@ struct EditorView: View {
                             if isSearching { search.clear() }
                             isSearching.toggle()
                         }
-                        Button("Undo", systemImage: "arrow.uturn.backward") { notebook.undoManager.undo() }
+                        Button("Undo", systemImage: "arrow.uturn.backward") {
+                            bridge.controller?.finishTextEditing()  // undo then takes back the typing as one step
+                            notebook.undoManager.undo()
+                        }
                             .disabled(!notebook.canUndo)
-                        Button("Redo", systemImage: "arrow.uturn.forward") { notebook.undoManager.redo() }
+                        Button("Redo", systemImage: "arrow.uturn.forward") {
+                            bridge.controller?.finishTextEditing()
+                            notebook.undoManager.redo()
+                        }
                             .disabled(!notebook.canRedo)
                     }
                 }

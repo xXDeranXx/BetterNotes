@@ -75,10 +75,12 @@ final class ObjectsUITests: XCTestCase {
         }
         sleep(1)
         _ = shot("typing")
-        app.buttons["Lasso"].firstMatch.tap()
+        // Close the notebook while still typing: the text must be in the closing save
+        // (the run script then reads the newest notebook's meta.json).
+        app.navigationBars.firstMatch.buttons["Library"].tap()
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         sleep(1)
-        _ = shot("text done")
-        XCTAssertEqual(undo.isEnabled, true)
+        _ = shot("closed")
     }
 
     /// Share of pixels that are clearly red.
