@@ -183,7 +183,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 - Test rhythm, with `scripts/test.sh`: `fast <Suite>` while building; `unit` (about 20 s) before each commit; `ui` (2 tests, about 3.5 min) only once before an iPad handover, never in loops; the iPad checklist for heat, latency and feel. UI tests pass `-skipTabRestore YES`; a new UI check becomes a part of `InkUITests` or `ObjectsUITests`, not a new test (one app launch each).
 - Swift 6, main-actor isolation by default; file and model code that runs off the main thread is `nonisolated`. `Info.plist` lives next to the `.xcodeproj`, outside the synchronized source folder.
 - Unit tests with a canvas that is not on screen cannot show PencilKit's behaviour. Changes to canvas setup or syncing need the end-to-end UI tests (`InkUITests`: undo, shapes, tabs; `ObjectsUITests`) and a "draw, force-quit, reopen" check.
-- UI tests: tapping an already selected tool opens its options (tool settings survive launches); `typeText` cannot reach a text view inside PDFView's page (tap `app.keys`); the simulator shares its clipboard with the test.
+- UI tests: the simulator must not have a hardware keyboard connected (I/O > Keyboard), else the on-screen keys the tests tap do not exist; tapping an already selected tool opens its options (tool settings survive launches); `typeText` cannot reach a text view inside PDFView's page (tap `app.keys`); the simulator shares its clipboard with the test.
 
 **Pages, coordinates, rendering**
 - One conversion place, `PageGeometry`. Page coordinates (ink, objects, shapes): points, top-left origin, y down, the **unrotated** page. PDFKit gives each overlay the page's size in points at every zoom and enlarges it from outside; for a page with `/Rotate` it gives the unrotated size and turns the overlay. `PDFPage.bounds(for:)` is before `/Rotate`; `PageMeta.size` is the displayed size.
@@ -217,6 +217,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 - A SwiftUI `List` swallows drops: lists and grids that accept drops are `ScrollView` + `LazyVStack`/grid. `onDrop` + `loadFileRepresentation`, and copy the file at once (it is deleted after the callback).
 - Confirmation dialogs are attached to the button or tile they belong to (on the iPad they are popovers pointing at it). One `fileImporter` per view.
 - No text fields in popovers the Pencil reaches (Scribble types into them): put them behind a dialog.
+- Size things from what the window offers (`GeometryReader`), never from content that the measurement itself sizes (the editor was cut off in a narrow window).
 - Main-thread rendering (thumbnails, covers) pauses while a window animates (`TransitionGate`) and at thermal state serious.
 - Look: follow Goodnotes' design (decided 2026-10-23, M9), not Apple-native glass; keep accessibility labels stable for the UI tests.
 - The developer is left-handed: the Pencil's tool palette opens to the right (a setting).

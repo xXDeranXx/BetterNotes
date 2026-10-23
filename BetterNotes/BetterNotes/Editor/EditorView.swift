@@ -98,6 +98,18 @@ struct EditorView: View {
     }
 
     var body: some View {
+        // The width comes from what the window offers (GeometryReader), never from the content:
+        // measured on the content, a toolbar sized for a wide window kept the content wide
+        // after the window got narrower (Stage Manager, Split View), and the editor was cut
+        // off on both sides (iPad, 2026-10-23).
+        GeometryReader { proxy in
+            editor
+                .onAppear { screenWidth = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, width in screenWidth = width }
+        }
+    }
+
+    private var editor: some View {
         NavigationStack {
             HStack(spacing: 0) {
                 if isSidebarVisible {
@@ -130,7 +142,6 @@ struct EditorView: View {
                         }
                     }
             }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { screenWidth = $0 }
                 .ignoresSafeArea(edges: .bottom)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {

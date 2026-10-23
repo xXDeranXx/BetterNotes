@@ -236,6 +236,13 @@ struct PageSidebar: View {
                 // Pages slide into their new places after an insert, delete or reorder.
                 .animation(.easeInOut(duration: 0.25), value: notebook.pages.map(\.id))
             }
+            // A page dropped on empty space (between pictures, below the last one) goes to the end.
+            // The pictures' own drop targets win where they are.
+            .dropDestination(for: String.self) { items, _ in
+                guard let dragged = items.first.flatMap(UUID.init(uuidString:)) else { return false }
+                actions.dropAtEnd(dragged)
+                return true
+            }
             .onChange(of: navigator.currentPageID) { _, id in
                 if let id { withAnimation { proxy.scrollTo(id) } }
             }

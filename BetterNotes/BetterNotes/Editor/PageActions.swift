@@ -66,17 +66,31 @@ struct PageActions {
         }
     }
 
-    /// A page dragged over from another window's notebook (M9): a copy goes in before `target`,
-    /// ink, images and text included, as one undo step here. The other notebook is only read;
-    /// to move the page, delete it there.
-    func copyFromOtherWindow(_ pageID: UUID, before target: UUID) {
-        guard let source = WindowDirectory.notebook(containingPage: pageID), source !== notebook else { return }
+    /// A page dropped on the sidebar's empty space: one of ours moves to the end, one from
+    /// another window is copied to the end.
+    func dropAtEnd(_ draggedID: UUID) {
+        guard notebook.pages.contains(where: { $0.id == draggedID }) else {
+            copyFromOtherWindow(draggedID, before: nil)
+            return
+        }
+        attempt { try notebook.movePages([draggedID], toIndex: notebook.pages.count - 1) }
+    }
+
+    /// A page dragged over from another window's notebook (M9): a copy goes in before `target`
+    /// (at the end without one), ink, images and text included, as one undo step here. The
+    /// other notebook is only read; to move the page, delete it there.
+    func copyFromOtherWindow(_ pageID: UUID, before target: UUID?) {
+        guard let source = WindowDirectory.notebook(containingPage: pageID), source !== notebook else {
+            // Say so instead of doing nothing, so a failed drop can be told apart from one that never arrived.
+            report("The dragged page was not found. Its notebook must be open in another BetterNotes window.")
+            return
+        }
         attempt {
             let entries = try source.copyEntries([pageID])
             // Images first: meta.json must never name a file the notebook does not have.
             try notebook.package.copyObjectFiles(
                 Set(entries.flatMap(\.meta.objects).compactMap(\.imageFile)), from: source.package)
-            let index = notebook.pages.firstIndex { $0.id == target } ?? notebook.pages.count
+            let index = target.flatMap { id in notebook.pages.firstIndex { $0.id == id } } ?? notebook.pages.count
             let ids = try notebook.insertPages(entries, at: index, actionName: "Copy Page")
             if let first = ids.first { navigator.goTo(first) }
         }

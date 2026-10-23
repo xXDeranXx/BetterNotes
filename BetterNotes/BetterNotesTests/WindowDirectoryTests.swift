@@ -49,4 +49,30 @@ struct WindowDirectoryTests {
         target.undoManager.undo()
         #expect(target.pages.count == 1)
     }
+    @Test func aPageDroppedOnEmptySpaceGoesToTheEnd() throws {
+        let folder = try TempFolder()
+        let registry = OpenNotebookRegistry()
+        let windowOne = WindowSession(registry: registry), windowTwo = WindowSession(registry: registry)
+        try windowOne.open(try makeNotebook(in: folder.url, title: "Source"))
+        try windowTwo.open(try makeNotebook(in: folder.url, title: "Target"))
+        let source = try #require(windowOne.notebook), target = try #require(windowTwo.notebook)
+        try target.addPageAtEnd()
+        let actions = PageActions(notebook: target, navigator: PageNavigator(notebook: target), report: { Issue.record("\($0)") })
+        let firstOwn = target.pages[0].id
+
+        actions.dropAtEnd(source.pages[0].id)  // from the other window: copied to the end
+        #expect(target.pages.count == 3 && target.pages[0].id == firstOwn)
+        #expect(target.drawing(for: target.pages[2].id).strokes.isEmpty && target.pages[2].id != source.pages[0].id)
+        actions.dropAtEnd(firstOwn)  // our own page: moved to the end
+        #expect(target.pages.last?.id == firstOwn)
+    }
+
+    @Test func aDroppedPageThatIsNowhereSaysSo() throws {
+        let folder = try TempFolder()
+        let notebook = try Notebook.open(try makeNotebook(in: folder.url))
+        var message: String?
+        let actions = PageActions(notebook: notebook, navigator: PageNavigator(notebook: notebook), report: { message = $0 })
+        actions.dropAtEnd(UUID())
+        #expect(message != nil && notebook.pages.count == 1)
+    }
 }
