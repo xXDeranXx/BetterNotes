@@ -44,12 +44,15 @@ nonisolated enum PenKind: String, Codable, CaseIterable, Sendable {
 
     var defaultColor: String { self == .marker ? "#FFD60A" : "#000000" }
 
+    /// Close to what people report using in Goodnotes (body text about 0.5-0.7 mm, a highlighter
+    /// over notes about 4 mm; 1 mm is about 2.8 points). Pencil, brush and crayon start at (or just
+    /// above) the thinnest width PencilKit allows for them (2.4000001, 10, 10).
     var defaultWidth: Double {
         switch self {
-        case .pen, .monoline, .pencil: 3
-        case .fountainPen: 4
+        case .pen, .monoline: 2
+        case .fountainPen, .pencil: 2.5
         case .watercolor, .crayon: 10
-        case .marker: 18
+        case .marker: 12
         }
     }
 

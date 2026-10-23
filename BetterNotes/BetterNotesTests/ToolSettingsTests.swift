@@ -55,6 +55,20 @@ struct ToolSettingsTests {
         #expect(settings.setting(for: .pencil).width == PenKind.pencil.defaultWidth)
     }
 
+    @Test func everyDefaultWidthIsOneThatPencilKitAllows() {
+        for kind in PenKind.allCases {
+            #expect(kind.widthRange.contains(kind.defaultWidth), "\(kind)")
+        }
+    }
+
+    @Test func aPenTheUserAdjustedKeepsItsWidthWhenDefaultsChange() throws {
+        // Stored widths win over defaults; only pens never adjusted get the new defaults.
+        let json = Data(##"{"pens": {"pen": {"colorHex": "#000000", "width": 3}}}"##.utf8)
+        let settings = try JSONDecoder().decode(ToolSettings.self, from: json)
+        #expect(settings.setting(for: .pen).width == 3)
+        #expect(settings.setting(for: .monoline).width == PenKind.monoline.defaultWidth)
+    }
+
     @Test func aBadHexCodeIsIgnored() {
         var settings = ToolSettings()
         settings.setColor("not a color", for: .pen)
