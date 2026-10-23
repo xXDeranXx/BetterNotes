@@ -199,7 +199,16 @@ final class PageOverlayView: UIView {
         canvas.maximumZoomScale = scale
         if canvas.zoomScale != scale { canvas.zoomScale = scale }
         canvas.transform = CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)
+        // Layers made by hand draw at 1x unless told otherwise; PDFKit enlarges the overlay when
+        // zoomed, so the shape preview renders as sharp as the ink.
+        let screenScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
+        for layer in [fillPreview, outlinePreview] where layer.contentsScale != screenScale * scale {
+            layer.contentsScale = screenScale * scale
+        }
     }
+
+    /// The resolution the shape preview draws at (tests).
+    var shapePreviewScale: CGFloat { outlinePreview.contentsScale }
 }
 
 /// Follows one drag on the page while the shape tool is on.

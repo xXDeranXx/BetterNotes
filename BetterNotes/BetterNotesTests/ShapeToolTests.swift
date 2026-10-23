@@ -130,6 +130,24 @@ struct ShapeRenderingTests {
         #expect(pixel(image, 56, 56).a == 0)  // the corner is not rounded inward
     }
 
+    @Test func dashesAndDotsShowAsSeparateMarksWithPenInk() throws {
+        for (style, minimumMarks) in [(LineStyle.dashed, 4), (.dotted, 10)] {
+            let outline = try #require(ShapeGeometry.outline(
+                .rectangle, from: CGPoint(x: 20, y: 50), to: CGPoint(x: 180, y: 150), style: style, width: 3, filled: false))
+            let image = render(ShapeGeometry.strokes(for: outline, color: .black, width: 3))
+            // Walk along the top edge and count where ink starts again after a gap.
+            var marks = 0, wasInk = false, gapPixels = 0
+            for x in 25...175 {
+                let isInk = pixel(image, x, 50).a > 128
+                if isInk && !wasInk { marks += 1 }
+                if !isInk { gapPixels += 1 }
+                wasInk = isInk
+            }
+            #expect(marks >= minimumMarks, "\(style): \(marks) marks")
+            #expect(gapPixels > 30, "\(style): gaps of \(gapPixels) px")
+        }
+    }
+
     @Test func theFillIsAnEvenLightTintAndStaysInsideTheOutline() throws {
         let outline = try #require(ShapeGeometry.outline(
             .ellipse, from: CGPoint(x: 20, y: 40), to: CGPoint(x: 180, y: 160), style: .dashed, width: 3, filled: true))
@@ -269,6 +287,14 @@ struct ShapeToolEditorTests {
         #expect(overlay.isShowingShapePreview)
         overlay.retireOldCanvas()
         #expect(!overlay.isShowingShapePreview)
+    }
+
+    @Test func thePreviewIsAsSharpAsTheInkWhenZoomed() throws {
+        let (_, _, coordinator, overlay) = try makeEditor()
+        coordinator.zoomDidChange(to: 3)
+        overlay.layoutIfNeeded()
+        #expect(overlay.renderScale == 3)
+        #expect(overlay.shapePreviewScale >= 3 * 2)  // at least 2x screen pixels per point, times the zoom
     }
 
     @Test func theSystemToolPickerNeverDrawsShapes() throws {
