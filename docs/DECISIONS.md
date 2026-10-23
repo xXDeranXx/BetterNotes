@@ -103,6 +103,7 @@ Decided:
   - **Recording**: "Record" writes `Application Support/Debug/debug-<date>.csv` (columns `time,elapsed_s,cpu_percent,memory_mb,available_mb,fps,longest_frame_ms,thermal,canvases,render_scale,loaded_drawings,pages`, dot as decimal point). It is not in Documents, because the library would show it as a folder and backups would include it. The panel's "Files" menu shares a recording through the share sheet, or deletes them all.
   - **Panel**: tap folds it to one line; drag moves it to another corner (remembered).
   - Checked in the simulator with screenshots. 415 unit tests pass.
+- **Debug overlay confirmed on the iPad (2026-10-23):** it works. **First CPU readings while writing:** at most about 110 % during normal writing (lifting between words), and up to about 140 % for one long stroke without lifting. Our own per-touch work in `HoldToSnapGesture` is constant per point (it appends the point and checks the distance to the rest point), so the rise with a long stroke most likely comes from PencilKit redrawing the growing live stroke. Not checked yet: the same strokes with "Hold to snap" and "Hold to smooth" off (our share), and at zoom 1 vs. zoomed (`k`). **Heat is still not measured**: it needs a longer recording (20+ minutes of writing).
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones
