@@ -151,7 +151,13 @@ final class PageOverlayView: UIView {
         }
         shapeGesture.isEnabled = false
         addGestureRecognizer(shapeGesture)
+        holdGesture.isEnabled = false
+        holdGesture.delegate = self
+        addGestureRecognizer(holdGesture)
     }
+
+    /// Watches pen strokes for a hold (see `HoldToSnapGesture`).
+    let holdGesture = HoldToSnapGesture()
 
     /// Shows `shape` on the preview layer, in the same points the strokes will get.
     func showShapePreview(_ shape: ShapeOutline?, color: UIColor, width: CGFloat) {
@@ -284,5 +290,129 @@ final class ShapeDragGesture: UIGestureRecognizer {
         var types: [UITouch.TouchType] = [.pencil]
         if allowed { types.append(.direct) }
         allowedTouchTypes = types.map { NSNumber(value: $0.rawValue) }
+    }
+}
+
+/// Listens to the Pencil while a pen writes, for "hold to snap" (M7). It runs **at the same
+/// time** as PencilKit's own drawing gesture: normally only one gesture recognizer may handle
+/// a touch, but the overlay's delegate method `shouldRecognizeSimultaneouslyWith` lets this one
+/// watch the same touches while PencilKit draws (like two event listeners on one element in
+/// JavaScript, where neither calls `stopPropagation`).
+///
+/// It stays in the `possible` state, only collecting points, until the Pencil has been held
+/// still (`HoldDetector`, checked by a timer) and `shouldSnap` accepts the points as a shape.
+/// Then it begins, reports every move while the Pencil follows the shape, and ends on lift.
+/// A stroke that never snaps lets it fail quietly at the end; PencilKit keeps its stroke.
+final class HoldToSnapGesture: UIGestureRecognizer {
+    /// The stroke's points so far, in the overlay's coordinates, which are page points.
+    private(set) var points: [CGPoint] = []
+    /// Where the Pencil was held, in page points.
+    private(set) var holdLocation: CGPoint = .zero
+    /// Asked once a hold is detected; true starts the snap.
+    var shouldSnap: (([CGPoint]) -> Bool)?
+
+    private var detector = HoldDetector()
+    private var trackedTouch: UITouch?
+    private var timer: DispatchWorkItem?
+
+    init() {
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false  // PencilKit must keep getting the touches
+        delaysTouchesEnded = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard trackedTouch == nil, touches.count == 1, let touch = touches.first else {
+            if state == .possible { state = .failed }  // a second touch: a pinch, not a stroke
+            return
+        }
+        trackedTouch = touch
+        points = [touch.location(in: view)]
+        detector.reset()
+        detector.add(touch.location(in: nil), at: touch.timestamp)
+        scheduleHoldCheck()
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        if state == .possible {
+            // Coalesced touches: the Pencil reports up to 240 positions a second, more than
+            // the screen shows; all of them keep a fast stroke's shape.
+            let restBefore = detector.restTime
+            for touch in event.coalescedTouches(for: trackedTouch) ?? [trackedTouch] {
+                points.append(touch.location(in: view))
+                // Stillness is judged on the glass (window points), not on the zoomed page.
+                detector.add(touch.location(in: nil), at: touch.timestamp)
+            }
+            if detector.restTime != restBefore { scheduleHoldCheck() }
+        } else {
+            state = .changed
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        state = state == .possible ? .failed : .ended
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        state = state == .possible ? .failed : .cancelled
+    }
+
+    override func reset() {
+        super.reset()
+        trackedTouch = nil
+        points = []
+        detector.reset()
+        timer?.cancel()
+        timer = nil
+    }
+
+    /// Where the tracked touch is now, in page points.
+    var currentLocation: CGPoint {
+        guard let trackedTouch, let view else { return holdLocation }
+        return trackedTouch.location(in: view)
+    }
+
+    /// Checks again when the Pencil would have rested long enough (it may send no touches at
+    /// all while it does not move).
+    private func scheduleHoldCheck() {
+        timer?.cancel()
+        guard let holdTime = detector.holdTime else { return }
+        let work = DispatchWorkItem { [weak self] in self?.checkHold() }
+        timer = work
+        let delay = max(0, holdTime - ProcessInfo.processInfo.systemUptime) + 0.005
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func checkHold() {
+        guard state == .possible, let trackedTouch,
+            detector.isHolding(at: ProcessInfo.processInfo.systemUptime)
+        else { return }
+        holdLocation = trackedTouch.location(in: view)
+        if shouldSnap?(points) == true {
+            state = .began
+        } else {
+            // Not a shape: keep writing. Only a new rest after moving can snap later.
+            detector.reset()
+        }
+    }
+
+    /// Pencil only, or Pencil and fingers (finger drawing on, and the simulator).
+    func allowFingers(_ allowed: Bool) {
+        var types: [UITouch.TouchType] = [.pencil]
+        if allowed { types.append(.direct) }
+        allowedTouchTypes = types.map { NSNumber(value: $0.rawValue) }
+    }
+}
+
+extension PageOverlayView: UIGestureRecognizerDelegate {
+    /// The hold gesture watches the same touches as PencilKit's drawing gesture (of the current
+    /// canvas, or of the old one during a swap), and as nothing else, so it never lets the page
+    /// scroll while a shape follows the Pencil.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer === holdGesture && (other.view is PKCanvasView)
     }
 }

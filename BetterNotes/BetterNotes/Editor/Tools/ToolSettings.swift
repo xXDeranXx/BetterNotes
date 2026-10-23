@@ -154,13 +154,15 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
     var threeFingerTapRedoes = true
     /// Keep the system tool picker instead of the own toolbar, until the toolbar is trusted.
     var usesSystemToolPicker = false
+    /// Hold the Pencil still at the end of a stroke to turn it into a clean shape (M7).
+    var holdToSnapShapes = true
 
     init() {}
 
     private enum CodingKeys: String, CodingKey {
         case version, selected, pens, enabledPens, favoriteColors, presets, eraserMode, eraserWidth, shape
         case toolbarPosition, isToolbarCollapsed, allowsFingerDrawing, isLeftHanded, twoFingerTapUndoes
-        case threeFingerTapRedoes, usesSystemToolPicker
+        case threeFingerTapRedoes, usesSystemToolPicker, holdToSnapShapes
     }
 
     init(from decoder: Decoder) throws {
@@ -187,6 +189,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         twoFingerTapUndoes = value(.twoFingerTapUndoes) ?? twoFingerTapUndoes
         threeFingerTapRedoes = value(.threeFingerTapRedoes) ?? threeFingerTapRedoes
         usesSystemToolPicker = value(.usesSystemToolPicker) ?? usesSystemToolPicker
+        holdToSnapShapes = value(.holdToSnapShapes) ?? holdToSnapShapes
         sanitize()
     }
 
@@ -208,6 +211,7 @@ nonisolated struct ToolSettings: Codable, Equatable, Sendable {
         try c.encode(twoFingerTapUndoes, forKey: .twoFingerTapUndoes)
         try c.encode(threeFingerTapRedoes, forKey: .threeFingerTapRedoes)
         try c.encode(usesSystemToolPicker, forKey: .usesSystemToolPicker)
+        try c.encode(holdToSnapShapes, forKey: .holdToSnapShapes)
     }
 
     /// Repairs values that make no sense (a bad color, a width out of range, an empty toolbar).

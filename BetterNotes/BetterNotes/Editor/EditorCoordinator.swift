@@ -26,6 +26,8 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private(set) var allowsFingerDrawing = false
     /// The shape tool's choices while it is selected, nil for every other tool.
     private(set) var shape: ShapeSetting?
+    /// The pen in use while hold to snap is on (and a pen of the own toolbar is selected).
+    private(set) var snappingPen: (kind: PenKind, setting: PenSetting)?
     private var lastApplication: ToolApplication?
 
     /// What `configure` needs from the settings; selecting a tool or changing its color or
@@ -106,6 +108,11 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         overlay.canvas.delegate = self
         overlay.renderScale = currentRenderScale
         overlay.shapeGesture.addTarget(self, action: #selector(shapeDragged(_:)))
+        overlay.holdGesture.addTarget(self, action: #selector(holdSnapped(_:)))
+        overlay.holdGesture.shouldSnap = { [weak self, weak overlay] points in
+            guard let self, let overlay else { return false }
+            return self.prepareSnap(points, on: overlay)
+        }
         return overlay
     }
 
@@ -184,6 +191,11 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         allowsFingerDrawing = settings.allowsFingerDrawing
         self.isRulerActive = isRulerActive
         shape = settings.selected == .shape && !settings.usesSystemToolPicker ? settings.shape : nil
+        if case .pen(let kind) = settings.selected, settings.holdToSnapShapes, !settings.usesSystemToolPicker {
+            snappingPen = (kind, settings.setting(for: kind))
+        } else {
+            snappingPen = nil
+        }
         for overlay in visibleOverlays.values {
             configure(overlay)
             if switchedPicker {
@@ -204,6 +216,12 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         overlay.shapeGesture.allowFingers(true)
         #else
         overlay.shapeGesture.allowFingers(allowsFingerDrawing)
+        #endif
+        overlay.holdGesture.isEnabled = snappingPen != nil
+        #if targetEnvironment(simulator)
+        overlay.holdGesture.allowFingers(true)
+        #else
+        overlay.holdGesture.allowFingers(allowsFingerDrawing)
         #endif
         if canvas.isRulerActive != isRulerActive { canvas.isRulerActive = isRulerActive }
         #if !targetEnvironment(simulator)
@@ -319,8 +337,13 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
             overlay.clearShapePreview()
             return
         }
+        commit(ShapeGeometry.strokes(for: outline, color: color(of: shape), width: CGFloat(shape.width)), on: overlay)
+    }
+
+    /// Adds strokes to the page as one undo step ("Shape") and hands the preview over to the ink.
+    private func commit(_ strokes: [PKStroke], on overlay: PageOverlayView) {
         var drawing = notebook.drawing(for: overlay.pageID)
-        drawing.strokes += ShapeGeometry.strokes(for: outline, color: color(of: shape), width: CGFloat(shape.width))
+        drawing.strokes += strokes
         // A shape only adds ink, so the canvas keeps its strokes and just gets the new drawing; no
         // fresh canvas (swapping made every filled shape on the page flicker, seen on the iPad).
         // `ShapeToolUITests` checks that the next stroke still keeps the shape.
@@ -331,12 +354,99 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         overlay.finishShapePreview()
     }
 
+    // MARK: Hold to snap (M7)
+
+    /// A snap in progress: the shape as recognized, where the Pencil was held, and the shape
+    /// the preview showed last (committed on lift, like the shape tool's last end point).
+    private struct Snap {
+        weak var overlay: PageOverlayView?
+        let shape: SnappedShape
+        let hold: CGPoint
+        var current: SnappedShape
+    }
+    private var snap: Snap?
+
+    /// The look of the last stroke drawn with each pen and width (see `InkTemplate`).
+    private struct TemplateKey: Hashable {
+        let kind: PenKind
+        let width: Double
+    }
+    private var inkTemplates: [TemplateKey: InkTemplate] = [:]
+
+    /// Called by the hold gesture once the Pencil rested: is this stroke a shape?
+    func prepareSnap(_ points: [CGPoint], on overlay: PageOverlayView) -> Bool {
+        guard snappingPen != nil, let shape = ShapeRecognizer.recognize(points) else { return false }
+        snap = Snap(overlay: overlay, shape: shape, hold: overlay.holdGesture.holdLocation, current: shape)
+        return true
+    }
+
+    @objc private func holdSnapped(_ gesture: HoldToSnapGesture) {
+        guard let overlay = gesture.view as? PageOverlayView, var snap, snap.overlay === overlay else { return }
+        switch gesture.state {
+        case .began:
+            // Switching PencilKit's drawing gesture off throws the half stroke away cleanly
+            // (SPEC, M2 spike). It stays off until the Pencil is lifted.
+            overlay.canvas.drawingGestureRecognizer.isEnabled = false
+            showSnapPreview(snap.current, on: overlay)
+        case .changed:
+            snap.current = snap.shape.following(from: snap.hold, to: gesture.currentLocation)
+            self.snap = snap
+            showSnapPreview(snap.current, on: overlay)
+        case .ended:
+            self.snap = nil
+            restoreDrawing(on: overlay)
+            if let strokes = snapStrokes(snap.current) { commit(strokes, on: overlay) } else { overlay.clearShapePreview() }
+        default:
+            self.snap = nil
+            restoreDrawing(on: overlay)
+            overlay.clearShapePreview()
+        }
+    }
+
+    private func restoreDrawing(on overlay: PageOverlayView) {
+        overlay.canvas.drawingGestureRecognizer.isEnabled = shape == nil
+    }
+
+    private func showSnapPreview(_ shape: SnappedShape, on overlay: PageOverlayView) {
+        guard let pen = snappingPen else { return }
+        let color = HexColor.color(pen.setting.colorHex) ?? .black
+        // A plain line in roughly the drawn width; textures show once the Pencil is lifted.
+        let (alpha, widthFactor): (CGFloat, CGFloat) = switch pen.kind {
+        case .marker: (0.4, 1)
+        case .watercolor: (0.5, 0.9)
+        case .pencil: (0.8, 0.55)
+        case .crayon: (1, 1.3)
+        default: (1, 1)
+        }
+        overlay.showShapePreview(shape.outline, color: color.withAlphaComponent(alpha),
+                                 width: CGFloat(pen.setting.width) * widthFactor)
+    }
+
+    /// The snapped shape as one stroke in the pen's own ink, looking like the pen's last stroke.
+    private func snapStrokes(_ shape: SnappedShape) -> [PKStroke]? {
+        guard let pen = snappingPen, let points = shape.outline.pieces.first else { return nil }
+        let key = TemplateKey(kind: pen.kind, width: pen.setting.width)
+        let template = inkTemplates[key] ?? InkTemplate.fallback(for: pen.kind.inkType, width: CGFloat(pen.setting.width))
+        let ink = PKInk(pen.kind.inkType, color: HexColor.color(pen.setting.colorHex) ?? .black)
+        return [template.stroke(through: points, ink: ink)]
+    }
+
+    /// Remembers the look of a stroke the user just drew with a pen.
+    private func rememberInk(of stroke: PKStroke) {
+        guard let pen = snappingPen, let template = InkTemplate.from(stroke) else { return }
+        inkTemplates[TemplateKey(kind: pen.kind, width: pen.setting.width)] = template
+    }
+
     // MARK: Canvas → model
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         guard !isSyncing, let overlay = canvasView.superview as? PageOverlayView else { return }
         isSyncing = true
         defer { isSyncing = false }
-        notebook.setDrawing(canvasView.drawing, for: overlay.pageID)
+        let before = notebook.drawing(for: overlay.pageID).strokes.count
+        let drawing = canvasView.drawing
+        notebook.setDrawing(drawing, for: overlay.pageID)
+        // One new stroke while a pen is selected: the user wrote, remember how it looks.
+        if drawing.strokes.count == before + 1, let last = drawing.strokes.last { rememberInk(of: last) }
     }
 }
