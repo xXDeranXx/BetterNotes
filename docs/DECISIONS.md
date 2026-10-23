@@ -206,6 +206,7 @@ Decided:
     - `scripts/test.sh fast <Suite>… | unit | ui` prints only summary lines; `ui` takes about 3.5 min.
     - The rhythm is in SPEC "Rules learned".
   - 454 unit tests and both UI tests pass.
+- **Tabs, open items closed (2026-10-23, iPad):** **Rename…** in the tab menu works (also for the shown tab). The **tab bug** (notebook moved from a second window's library, first window could not save it) did not happen again: closed as not reproduced; if it comes back, note the exact steps. **Moving or copying pages into a notebook open in a background tab** stays untested: the developer does not expect to use background tabs that way (`LibraryTabsTests` covers the model path). Tabs are done; next is M9.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

@@ -171,8 +171,6 @@ These are fixed in milestones 1 and 2 so that later milestones add to the code i
 
 ## Open questions
 Still open (everything decided so far is in `docs/DECISIONS.md`):
-- **Tabs bug (developer, 2026-10-23):** a notebook open as a tab in one BetterNotes window was moved from a second window's library, and the first window could then no longer save it. The model refuses this in every path a test can reach (`OtherWindowMoveTests`), so the exact steps are needed: which window showed what, how it was moved (drag onto a folder, Move to…, a folder containing it), and whether the notebook was the shown tab.
-- **Tabs, not yet checked:** moving or copying pages (page grid, select pages, Move to / Copy to) into a notebook that is open in a background tab; and Rename… in a tab's menu (also for the shown tab).
 - **M6, export method:** compare (a) `PDFAnnotation` ink and (b) re-rendering (in use) on a real lecture PDF with ink: size, sharpness, look in Obsidian. Needs a file from the developer.
 - **Not yet measured on the iPad:** heat in normal use (also brush and crayon), eviction on a long notebook, save time after page operations on image-heavy PDFs, opening time of a 300-page PDF.
 
@@ -236,7 +234,7 @@ Each milestone ends with: the app running on the developer's iPad, tests passing
 - **M8** images and text boxes (Photos, Files, Paste, hold-to-paste, select, move, resize, arrange, fonts, bold and italic).
 
 ### Order of work (updated 2026-10-23)
-Design talk for tabs and the whiteboard done (2026-10-23). Debug overlay done. **Tabs** done (steps 1 to 6, themes, toolbar in the top bar, rename from the tab menu; confirmed on the iPad except the items under "Open questions"). Next: the open tab bug below -> M9 (polish; "bring the window forward" uses the tab registry) -> the **whiteboard spike**.
+Design talk for tabs and the whiteboard done (2026-10-23). Debug overlay done. **Tabs** done (steps 1 to 6, themes, toolbar in the top bar, rename from the tab menu; confirmed on the iPad; the tab bug was not reproduced, page moves into a background tab are untested by choice). Next: M9 (polish; "bring the window forward" uses the tab registry) -> the **whiteboard spike**.
 
 ### Milestone 9: Daily-use polish
 Build: polish for multiple windows and Split View (enabled since milestone 1): opening a notebook that is already open brings its window forward, drag and drop between windows; dark mode, empty and error states, layout checks in both orientations.
