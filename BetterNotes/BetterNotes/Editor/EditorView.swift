@@ -59,10 +59,10 @@ struct EditorView: View {
     @State private var bridge = EditorBridge()
     @State private var imageSource: ImageSource?
     @State private var objectError: String?
-    /// Height of the pen toolbar (measured), so the first page starts below it.
-    @State private var toolbarHeight: CGFloat = 0
     /// Size of the editor area, so the toolbar can fit its buttons into it.
     @State private var editorSize: CGSize = .zero
+    /// The window's width, for the pen toolbar in the top bar.
+    @State private var screenWidth: CGFloat = 0
 
     init(notebook: Notebook, tab: NotebookTab? = nil) {
         self.notebook = notebook
@@ -70,6 +70,15 @@ struct EditorView: View {
         _thumbnails = State(initialValue: ThumbnailStore(notebook: notebook))
         _navigator = State(initialValue: PageNavigator(notebook: notebook))
     }
+
+    /// At the top the pen toolbar sits in the top bar itself (like Goodnotes), so nothing floats
+    /// over the page; at a side it floats over the page.
+    private var isToolbarInBar: Bool {
+        tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker
+    }
+
+    /// The middle of the top bar, between the buttons on the left and on the right.
+    private var barToolbarLength: CGFloat { max(0, screenWidth - 2 * 120) }
 
     private var toolbarAlignment: Alignment {
         switch tools.settings.toolbarPosition {
@@ -105,28 +114,27 @@ struct EditorView: View {
                     onObjectError: { objectError = $0 },
                     // The system tool palette floats above full-screen covers (grid, camera).
                     isToolPickerHidden: isShowingGrid || insertKind == .scan,
-                    topInset: tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight : 0,
+                    topInset: 0,
                     position: tab?.position)
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { editorSize = $0 }
                     // On this inner view, so its pickers do not fight with the page insertion's.
                     .objectImageInsertion(source: $imageSource, bridge: bridge) { objectError = $0 }
                     .overlay(alignment: undoAlignment) {
                         UndoRedoPill(notebook: notebook) { bridge.controller?.finishTextEditing() }
-                            .padding(.top, tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight + 4 : 12)
+                            .padding(.top, 8)
                             .padding(.horizontal, 12)
                     }
                     .overlay(alignment: toolbarAlignment) {
-                        if !tools.settings.usesSystemToolPicker {
-                            PenToolbar(
-                                tools: tools, onInsertImage: { imageSource = $0 },
-                                availableLength: tools.settings.toolbarPosition == .top ? editorSize.width : editorSize.height)
-                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toolbarHeight = $0 }
+                        if !tools.settings.usesSystemToolPicker && !isToolbarInBar {
+                            PenToolbar(tools: tools, onInsertImage: { imageSource = $0 }, availableLength: editorSize.height)
                         }
                     }
             }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { screenWidth = $0 }
                 .ignoresSafeArea(edges: .bottom)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 0) {
+                        topBar
                         if let error = notebook.saveError {
                             SaveErrorBanner(message: error) { Task { await notebook.saveChanges() } }
                         }
@@ -187,37 +195,71 @@ struct EditorView: View {
                 .sheet(isPresented: $isExporting) {
                     ExportSheet(notebook: notebook, thumbnails: thumbnails) { isExporting = false }
                 }
-                .navigationTitle(notebook.meta.title)
-                .navigationBarTitleDisplayMode(.inline)
-                // Like Goodnotes: the title is in the tab, and the bar has the strip's color, so
-                // the active tab and the bar look like one piece (see `TabStrip`).
-                .toolbarBackground(theme.barColor(colorScheme), for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-                // Tinted themes are dark in light mode too, so the bar's buttons turn white.
-                .toolbarColorScheme(theme.isTinted ? .dark : nil, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
-                    ToolbarItemGroup(placement: .topBarLeading) {
-                        Button("Pages", systemImage: "sidebar.left") {
-                            withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
-                        }
-                        Button("Page Grid", systemImage: "square.grid.2x2") { isShowingGrid = true }
-                    }
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        if tools.settings.usesSystemToolPicker {
-                            // The own toolbar is hidden then, so this is the way back to it.
-                            Button("Use Own Toolbar", systemImage: "pencil.tip.crop.circle") {
-                                tools.settings.usesSystemToolPicker = false
-                            }
-                        }
-                        Button("Export PDF", systemImage: "square.and.arrow.up") { isExporting = true }
-                        Button("Search", systemImage: "magnifyingglass") {
-                            if isSearching { search.clear() }
-                            isSearching.toggle()
-                        }
-                    }
-                }
+                // The system bar is not used: SwiftUI rebuilt its middle item on every change of the
+                // tools, which closed a pen's popover as it opened. The own row (`EditorTopBar`)
+                // has the bar's color, so the active tab and the row look like one piece.
+                .toolbar(.hidden, for: .navigationBar)
         }
+    }
+
+    /// The row under the tab strip: page buttons, the pen toolbar when it sits at the top,
+    /// export and search.
+    private var topBar: some View {
+        EditorTopBar(theme: theme, scheme: colorScheme) {
+            barButton("Pages", "sidebar.left") {
+                withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
+            }
+            barButton("Page Grid", "square.grid.2x2") { isShowingGrid = true }
+        } middle: {
+            if isToolbarInBar {
+                PenToolbar(
+                    tools: tools, onInsertImage: { imageSource = $0 }, availableLength: barToolbarLength,
+                    isInBar: true, barIconColor: theme.primaryText)
+            }
+        } trailing: {
+            if tools.settings.usesSystemToolPicker {
+                // The own toolbar is hidden then, so this is the way back to it.
+                barButton("Use Own Toolbar", "pencil.tip.crop.circle") { tools.settings.usesSystemToolPicker = false }
+            }
+            barButton("Export PDF", "square.and.arrow.up") { isExporting = true }
+            barButton("Search", "magnifyingglass") {
+                if isSearching { search.clear() }
+                isSearching.toggle()
+            }
+        }
+    }
+
+    private func barButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: symbol, action: action)
+            .labelStyle(.iconOnly)
+            .font(.title3)
+            .foregroundStyle(theme.isTinted ? theme.primaryText : Color.accentColor)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+    }
+}
+
+/// The editor's top row in the theme's bar color (see `AppTheme`): a group of buttons on each
+/// side and the pen toolbar in the middle. Plain SwiftUI, so popovers from it stay open.
+private struct EditorTopBar<Leading: View, Middle: View, Trailing: View>: View {
+    let theme: AppTheme
+    let scheme: ColorScheme
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let middle: Middle
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 0) { leading }.padding(.horizontal, 4)
+            Spacer(minLength: 0)
+            middle
+            Spacer(minLength: 0)
+            HStack(spacing: 0) { trailing }.padding(.horizontal, 4)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 50)
+        .background(theme.barColor(scheme))
+        .overlay(alignment: .bottom) { Rectangle().fill(.black.opacity(0.12)).frame(height: 0.5) }
     }
 }
 

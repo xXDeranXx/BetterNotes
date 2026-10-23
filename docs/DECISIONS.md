@@ -161,6 +161,14 @@ Decided:
   - **Undo and redo**: the pill is solid (system background) with a border and a shadow; the see-through material vanished on the grey around the page.
   - **Testing rhythm** (the developer's standing rule, also in SPEC "Rules learned"): the touched suite while building; all unit tests before each commit; UI tests only when their area changed; the iPad for heat, latency and feel. Xcode's template UI tests (`BetterNotesUITests.swift`: `testExample`, `testLaunchPerformance`) were deleted, about 40 s less per UI run.
   - Checked with screenshots (Blue in light mode, System in dark mode). 434 unit tests and all UI tests pass.
+- **Pen toolbar in the top bar (2026-10-23, developer: "if the toolbar is on top move it up to the blue, so it doesn't look so empty", "the pill a little bit up under the blue bar"):**
+  - **Toolbar in the bar**: with the toolbar position "top", `PenToolbar(isInBar: true)` sits in the middle of the editor's top row. It is flat (no card, no shadow), buttons are 32 to 36 pt with 2 pt spacing, and icons use the theme's text color (`barIconColor`). Pens, shapes and text show their color as a small mark under the icon, because a black pen icon would vanish on blue. At the sides the toolbar still floats over the page. The page gets no top inset any more.
+  - **Undo pill**: 8 pt under the bar.
+  - **Own top row instead of the system bar**: the editor hides the system navigation bar and draws `EditorTopBar`, a SwiftUI `HStack` in the theme's bar color with page buttons, the pen toolbar, export and search.
+    - Tried first: the toolbar as the bar's `.principal` item. To get white icons on tinted themes the bar needed `toolbarColorScheme(.dark)`, but its popovers then inherited the dark style: white text on a light popover. `.environment(\.colorScheme)` did not reach the UIKit-backed list cells, and `preferredColorScheme` acted on the whole window.
+    - The own row avoids all of this, the popovers keep the app's normal look, and it gives the toolbar more room: all 17 buttons fit in portrait on the 11-inch iPad.
+  - **Test lesson**: tool settings survive launches, so a UI test that taps a pen twice may open and close its popover (the pen was already selected). Select a different tool first, or tap once.
+  - 434 unit tests and all UI tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

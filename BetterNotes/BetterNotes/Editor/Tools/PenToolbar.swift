@@ -12,6 +12,11 @@ struct PenToolbar: View {
     /// The length the toolbar may take along its direction (the editor's width at the top, its
     /// height at a side). The buttons shrink to fit it, and below the smallest size it scrolls.
     var availableLength: CGFloat = .infinity
+    /// In the editor's top bar (toolbar at the top): flat, smaller buttons, icons in the bar's
+    /// text color, the pen colors as marks under the icons.
+    var isInBar = false
+    /// The icons' color in the bar (white on a tinted theme, see `AppTheme.primaryText`).
+    var barIconColor: Color = .primary
     @State private var popover: Popover?
 
     private enum Popover: Hashable { case pen(PenKind), eraser, shape, text, settings }
@@ -26,7 +31,7 @@ struct PenToolbar: View {
                 expanded
             }
         }
-        .padding(8)
+        .padding(isInBar ? 0 : 8)
         .animation(.easeInOut(duration: 0.2), value: tools.settings.isToolbarCollapsed)
         .animation(.easeInOut(duration: 0.2), value: tools.settings.toolbarPosition)
     }
@@ -36,10 +41,10 @@ struct PenToolbar: View {
             tools.settings.isToolbarCollapsed = false
         } label: {
             Image(systemName: collapsedSymbol)
-                .foregroundStyle(currentColor)
-                .frame(width: 44, height: 44)
-                .background(.regularMaterial, in: Circle())
-                .shadow(radius: 3, y: 1)
+                .foregroundStyle(isInBar ? barIconColor : currentColor)
+                .frame(width: isInBar ? 34 : 44, height: isInBar ? 34 : 44)
+                .background(isInBar ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial), in: Circle())
+                .shadow(radius: isInBar ? 0 : 3, y: 1)
         }
         .accessibilityLabel("Show tools")
     }
@@ -69,9 +74,13 @@ struct PenToolbar: View {
     static let largestButton: CGFloat = 44
     /// Smaller is hard to hit with a finger; below this the toolbar scrolls instead.
     static let smallestButton: CGFloat = 34
-    private static let spacing: CGFloat = 6
-    /// The outer padding (8 on each side) and the padding inside the background (8 on each side).
-    private static let padding: CGFloat = 32
+    /// In the top bar the buttons must fit its height.
+    static let largestBarButton: CGFloat = 36
+    static let smallestBarButton: CGFloat = 32
+    private var spacing: CGFloat { isInBar ? 2 : 6 }
+    /// The outer padding (8 on each side) and the padding inside the background (8 on each side);
+    /// in the bar only 2 on each side.
+    private var padding: CGFloat { isInBar ? 4 : 32 }
 
     /// Buttons: the pens, eraser, lasso, select, shapes, text box, image, ruler, presets, settings, hide.
     private var buttonCount: Int { tools.settings.enabledPens.count + 10 }
@@ -83,36 +92,38 @@ struct PenToolbar: View {
     /// The length the expanded toolbar needs with buttons of `size`.
     private func length(buttonSize size: CGFloat) -> CGFloat {
         let items = buttonCount + Self.dividerCount
-        return Self.padding + CGFloat(buttonCount) * size + CGFloat(Self.dividerCount) + CGFloat(items - 1) * Self.spacing
+        return padding + CGFloat(buttonCount) * size + CGFloat(Self.dividerCount) + CGFloat(items - 1) * spacing
     }
 
     /// As big as fits, between `smallestButton` and `largestButton`.
     private var buttonSize: CGFloat {
-        guard availableLength.isFinite else { return Self.largestButton }
+        let largest = isInBar ? Self.largestBarButton : Self.largestButton
+        let smallest = isInBar ? Self.smallestBarButton : Self.smallestButton
+        guard availableLength.isFinite else { return largest }
         let fixed = length(buttonSize: 0)
         let fitting = (availableLength - fixed) / CGFloat(buttonCount)
-        return min(max(fitting.rounded(.down), Self.smallestButton), Self.largestButton)
+        return min(max(fitting.rounded(.down), smallest), largest)
     }
 
     private var needsScrolling: Bool { length(buttonSize: buttonSize) > availableLength }
 
     private var expanded: some View {
-        let layout = isVertical ? AnyLayout(VStackLayout(spacing: Self.spacing)) : AnyLayout(HStackLayout(spacing: Self.spacing))
+        let layout = isVertical ? AnyLayout(VStackLayout(spacing: spacing)) : AnyLayout(HStackLayout(spacing: spacing))
         let content = layout {
             buttons
         }
-        .padding(8)
+        .padding(isInBar ? 2 : 8)
         return Group {
             if needsScrolling {
                 ScrollView(isVertical ? .vertical : .horizontal, showsIndicators: false) { content }
                     // The scroll view takes what is left after the outer padding.
-                    .frame(maxWidth: isVertical ? nil : availableLength - 16, maxHeight: isVertical ? availableLength - 16 : nil)
+                    .frame(maxWidth: isVertical ? nil : availableLength - (isInBar ? 0 : 16), maxHeight: isVertical ? availableLength - 16 : nil)
             } else {
                 content
             }
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-        .shadow(radius: 4, y: 1)
+        .background(isInBar ? AnyShapeStyle(.clear) : AnyShapeStyle(.regularMaterial), in: RoundedRectangle(cornerRadius: 18))
+        .shadow(radius: isInBar ? 0 : 4, y: 1)
     }
 
     @ViewBuilder private var buttons: some View {
@@ -159,7 +170,9 @@ struct PenToolbar: View {
         let size = buttonSize
         return Image(systemName: symbol)
             .font(size >= 40 ? .title3 : .body)
-            .foregroundStyle(tint)
+            // In the bar the ink color could vanish on the bar's color (black on blue); the
+            // color is shown as a mark under the icon instead (see `colorMark`).
+            .foregroundStyle(isInBar ? barIconColor : tint)
             .frame(width: size, height: size)
             .background(isSelected ? Color.accentColor.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: size * 0.27))
             .contentShape(Rectangle())
@@ -172,14 +185,18 @@ struct PenToolbar: View {
             if isSelected { popover = .pen(kind) } else { tools.select(.pen(kind)) }
         } label: {
             icon(kind.symbol, isSelected: isSelected, tint: Color(hex: tools.settings.setting(for: kind).colorHex))
-                .overlay(alignment: .bottom) {
-                    Capsule().fill(Color(hex: tools.settings.setting(for: kind).colorHex))
-                        .frame(width: 18, height: 4).offset(y: -2)
-                        .overlay(Capsule().strokeBorder(.black.opacity(0.25), lineWidth: 0.5))
-                }
+                .overlay(alignment: .bottom) { colorMark(tools.settings.setting(for: kind).colorHex) }
         }
         .accessibilityLabel(kind.displayName)
         .popover(isPresented: binding(for: .pen(kind))) { PenOptionsView(tools: tools, kind: kind) }
+    }
+
+    /// A small bar in the pen's color under its icon.
+    private func colorMark(_ hex: String) -> some View {
+        Capsule().fill(Color(hex: hex))
+            .frame(width: 18, height: 4).offset(y: -2)
+            .overlay(Capsule().strokeBorder(.white.opacity(isInBar ? 0.5 : 0), lineWidth: 0.5).offset(y: -2))
+            .overlay(Capsule().strokeBorder(.black.opacity(0.25), lineWidth: 0.5).offset(y: -2))
     }
 
     private var eraserButton: some View {
@@ -200,6 +217,7 @@ struct PenToolbar: View {
             if isSelected { popover = .shape } else { tools.select(.shape) }
         } label: {
             icon(tools.settings.shape.kind.symbol, isSelected: isSelected, tint: Color(hex: tools.settings.shape.colorHex))
+                .overlay(alignment: .bottom) { if isInBar { colorMark(tools.settings.shape.colorHex) } }
         }
         .accessibilityLabel("Shapes")
         .popover(isPresented: binding(for: .shape)) { ShapeOptionsView(tools: tools) }
@@ -218,6 +236,7 @@ struct PenToolbar: View {
             if isSelected { popover = .text } else { tools.select(.text) }
         } label: {
             icon("character.textbox", isSelected: isSelected, tint: Color(hex: tools.settings.textColorHex))
+                .overlay(alignment: .bottom) { if isInBar { colorMark(tools.settings.textColorHex) } }
         }
         .accessibilityLabel("Text box")
         .popover(isPresented: binding(for: .text)) { TextOptionsView(tools: tools) }
@@ -278,3 +297,4 @@ struct PenToolbar: View {
         Binding(get: { popover == target }, set: { if !$0 && popover == target { popover = nil } })
     }
 }
+
