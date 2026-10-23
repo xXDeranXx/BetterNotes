@@ -12,7 +12,7 @@ final class ObjectsUITests: XCTestCase {
         let create = app.buttons["Create"].firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 10))
         create.tap()
-        let undo = app.navigationBars.firstMatch.buttons["Undo"]
+        let undo = app.buttons["Undo"].firstMatch
         XCTAssertTrue(undo.waitForExistence(timeout: 10))
         sleep(2)
         let window = app.windows.firstMatch
@@ -77,7 +77,7 @@ final class ObjectsUITests: XCTestCase {
         _ = shot("typing")
         // Close the notebook while still typing: the text must be in the closing save
         // (the run script then reads the newest notebook's meta.json).
-        app.navigationBars.firstMatch.buttons["Library"].tap()
+        app.buttons["Library"].firstMatch.tap()
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         sleep(1)
         _ = shot("closed")
@@ -96,7 +96,7 @@ final class ObjectsUITests: XCTestCase {
         let create = app.buttons["Create"].firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 10))
         create.tap()
-        XCTAssertTrue(app.navigationBars.firstMatch.buttons["Undo"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Undo"].firstMatch.waitForExistence(timeout: 10))
         sleep(2)
         let window = app.windows.firstMatch
         func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {

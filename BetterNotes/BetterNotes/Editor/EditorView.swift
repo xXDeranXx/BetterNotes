@@ -77,6 +77,11 @@ struct EditorView: View {
         }
     }
 
+    /// Top left, unless the pen toolbar sits on the left side.
+    private var undoAlignment: Alignment {
+        tools.settings.toolbarPosition == .leading && !tools.settings.usesSystemToolPicker ? .topTrailing : .topLeading
+    }
+
     private var actions: PageActions {
         PageActions(notebook: notebook, navigator: navigator) { pageError = $0 }
     }
@@ -103,6 +108,11 @@ struct EditorView: View {
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { editorSize = $0 }
                     // On this inner view, so its pickers do not fight with the page insertion's.
                     .objectImageInsertion(source: $imageSource, bridge: bridge) { objectError = $0 }
+                    .overlay(alignment: undoAlignment) {
+                        UndoRedoPill(notebook: notebook) { bridge.controller?.finishTextEditing() }
+                            .padding(.top, tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight + 4 : 12)
+                            .padding(.horizontal, 12)
+                    }
                     .overlay(alignment: toolbarAlignment) {
                         if !tools.settings.usesSystemToolPicker {
                             PenToolbar(
@@ -177,13 +187,13 @@ struct EditorView: View {
                 }
                 .navigationTitle(notebook.meta.title)
                 .navigationBarTitleDisplayMode(.inline)
+                // Like Goodnotes: the title is in the tab, and the bar has the strip's color, so
+                // the active tab and the bar look like one piece (see `TabStrip`).
+                .toolbarBackground(TabStrip.barColor, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
                 .toolbar {
+                    ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
                     ToolbarItemGroup(placement: .topBarLeading) {
-                        // Home: the library, the tabs stay open (typing is finished by
-                        // `beforeLeavingTab`, see `onAppear`).
-                        Button("Library", systemImage: "house") {
-                            Task { await session.showLibraryAnimated() }
-                        }
                         Button("Pages", systemImage: "sidebar.left") {
                             withAnimation(.easeInOut(duration: 0.25)) { isSidebarVisible.toggle() }
                         }
@@ -201,16 +211,6 @@ struct EditorView: View {
                             if isSearching { search.clear() }
                             isSearching.toggle()
                         }
-                        Button("Undo", systemImage: "arrow.uturn.backward") {
-                            bridge.controller?.finishTextEditing()  // undo then takes back the typing as one step
-                            notebook.undoManager.undo()
-                        }
-                            .disabled(!notebook.canUndo)
-                        Button("Redo", systemImage: "arrow.uturn.forward") {
-                            bridge.controller?.finishTextEditing()
-                            notebook.undoManager.redo()
-                        }
-                            .disabled(!notebook.canRedo)
                     }
                 }
         }
@@ -220,6 +220,38 @@ struct EditorView: View {
 extension EditorView {
     private func rememberPosition() {
         if let position = bridge.controller?.currentPosition() { tab?.position = position }
+    }
+}
+
+/// Undo and redo as a small floating pill over the page (like Goodnotes). Typing is finished
+/// first, so undo takes back the typing as one step.
+private struct UndoRedoPill: View {
+    let notebook: Notebook
+    let finishTyping: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button("Undo", systemImage: "arrow.uturn.backward") {
+                finishTyping()
+                notebook.undoManager.undo()
+            }
+            .frame(width: 44, height: 36)
+            .disabled(!notebook.canUndo)
+            Divider().frame(height: 20)
+            Button("Redo", systemImage: "arrow.uturn.forward") {
+                finishTyping()
+                notebook.undoManager.redo()
+            }
+            .frame(width: 44, height: 36)
+            .disabled(!notebook.canRedo)
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .font(.body.weight(.medium))
+        .frame(height: 36)
+        .padding(.horizontal, 4)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color(.separator).opacity(0.5), lineWidth: 0.5))
     }
 }
 

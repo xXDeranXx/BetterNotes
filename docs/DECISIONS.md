@@ -138,6 +138,22 @@ Decided:
   - **Tools**: `ToolController` now lives in `WindowSession` (shared by the tabs).
   - **Messages**: the library says "open in a tab" instead of "open in a window".
   - Checked in the simulator with screenshots (one tab, library with the strip, two tabs, switching, closing). 434 unit tests and all UI tests pass.
+- **Tabs, step 3 confirmed on the iPad (2026-10-23):** checklist 1 to 7 works:
+  - ink and pen across tabs;
+  - position restored;
+  - typing kept when switching;
+  - undo in a background tab;
+  - a released tab reloads;
+  - reorder and Close Other Tabs;
+  - memory and canvases stay flat after many switches.
+
+  **Step 4 decision:** library actions on a background tab are allowed only for **this window's** tabs; another window's tab is refused with a message (M9 may lift that).
+- **Tabs, Goodnotes layout (2026-10-23, from the developer's Goodnotes screenshot; asked: "strip + top bar", not the full Goodnotes tool bar):**
+  - **Strip**: the house (Library, filled while the library is shown) sits on the left of the strip, not in the editor's bar. The tabs share the width equally (at least 150 pt, then the strip scrolls). Each tab has its title on the left and × on the right, with thin vertical lines between inactive tabs. The active tab has rounded top corners in `TabStrip.barColor` (system background), flush with the editor's top bar, which now has the same color (`toolbarBackground`). The strip (`systemGray5`) also fills behind the status bar.
+  - **Top bar**: shows no title (it is in the tab).
+  - **Undo and redo** moved out of the bar into a floating pill (`UndoRedoPill`) at the top left of the page, below the pen toolbar; top right when the pen toolbar is on the left side.
+  - **UI tests** now find Undo and Library with `app.buttons[...]`.
+  - Checked with simulator screenshots in portrait (editor with 3 tabs, library) and landscape.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

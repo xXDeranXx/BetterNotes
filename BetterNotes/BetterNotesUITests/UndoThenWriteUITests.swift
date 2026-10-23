@@ -14,7 +14,7 @@ final class UndoThenWriteUITests: XCTestCase {
         let create = app.buttons["Create"].firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 10))  // the sheet can be slow in the simulator
         create.tap()
-        let undo = app.navigationBars.firstMatch.buttons["Undo"]
+        let undo = app.buttons["Undo"].firstMatch
         XCTAssertTrue(undo.waitForExistence(timeout: 10))
         sleep(2)
         // Tool settings are remembered between launches. Tapping a selected tool opens its options,
@@ -60,7 +60,7 @@ final class ShapeToolUITests: XCTestCase {
         let create = app.buttons["Create"].firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 10))  // the sheet can be slow in the simulator
         create.tap()
-        let undo = app.navigationBars.firstMatch.buttons["Undo"]
+        let undo = app.buttons["Undo"].firstMatch
         XCTAssertTrue(undo.waitForExistence(timeout: 10))
         sleep(2)
         let window = app.windows.firstMatch
