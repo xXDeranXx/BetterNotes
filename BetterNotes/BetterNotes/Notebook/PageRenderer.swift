@@ -99,6 +99,60 @@ nonisolated enum PageRenderer {
         }
     }
 
+    // MARK: Whiteboards
+
+    /// Renders a region of a whiteboard (page points) as an opaque image, `scale` pixels per
+    /// point: the background pattern, the objects in the region, then the ink.
+    static func renderBoard(
+        region: CGRect, background: BoardBackground, drawing: PKDrawing, objects: [PageObject] = [],
+        images: ObjectImageSource? = nil, scale: CGFloat
+    ) -> UIImage {
+        let pixelSize = CGSize(width: (region.width * scale).rounded(), height: (region.height * scale).rounded())
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: pixelSize, format: format).image { context in
+            drawBoard(
+                region: region, background: background, drawing: drawing, objects: objects, images: images,
+                in: context.cgContext, scale: scale, inkScale: scale)
+        }
+    }
+
+    /// A small picture of everything on a whiteboard (covers, thumbnails): its content region
+    /// at most `width` pixels wide, never above `maximumScale` pixels per point.
+    static func renderBoardPreview(
+        page: PageMeta, background: BoardBackground, drawing: PKDrawing, images: ObjectImageSource?,
+        width: CGFloat, maximumScale: CGFloat
+    ) -> UIImage {
+        let region = Whiteboard.contentRegion(inkBounds: drawing.bounds, objects: page.objects)
+        let scale = min(maximumScale, width / max(region.width, 1))
+        return renderBoard(
+            region: region, background: background, drawing: drawing, objects: page.objects, images: images, scale: scale)
+    }
+
+    /// Draws a region of a whiteboard into a context whose origin is the region's top-left
+    /// corner, with `scale` context units per point (1 in a PDF, so the pattern and text stay
+    /// vector). Only the ink inside the region becomes a bitmap, at `inkScale`; the caller keeps
+    /// that within memory (`Whiteboard.inkScale`).
+    static func drawBoard(
+        region: CGRect, background: BoardBackground, drawing: PKDrawing, objects: [PageObject],
+        images: ObjectImageSource?, in cgContext: CGContext, scale: CGFloat, inkScale: CGFloat
+    ) {
+        cgContext.saveGState()
+        defer { cgContext.restoreGState() }
+        cgContext.scaleBy(x: scale, y: scale)
+        cgContext.translateBy(x: -region.minX, y: -region.minY)  // from here on, board points
+        cgContext.clip(to: region)
+        cgContext.setFillColor(UIColor.white.cgColor)
+        cgContext.fill(region)
+        Whiteboard.drawBackground(background, in: region, context: cgContext)
+        drawObjects(objects.filter { $0.frame.intersects(region) }, images: images, in: cgContext)
+        guard !drawing.strokes.isEmpty, !drawing.bounds.intersection(region).isEmpty else { return }
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            drawing.image(from: region, scale: inkScale).draw(in: region)
+        }
+    }
+
     /// Draws objects from bottom to top into a context whose units are page points, y down.
     /// In a PDF context (export) text stays text and JPEG images are embedded as they are.
     static func drawObjects(_ objects: [PageObject], images: ObjectImageSource?, in cgContext: CGContext) {

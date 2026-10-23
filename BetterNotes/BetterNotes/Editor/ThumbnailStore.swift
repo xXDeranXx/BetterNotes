@@ -53,9 +53,15 @@ final class ThumbnailStore {
             let pdfPage = notebook.document?.page(at: index)
         else { return nil }
 
-        let image = PageRenderer.render(
-            page: pdfPage, drawing: notebook.drawing(for: page.id), objects: notebook.pages[index].objects,
-            images: ObjectImageSource(package: notebook.package), scale: Self.scale)
+        let images = ObjectImageSource(package: notebook.package)
+        let image = notebook.meta.isWhiteboard
+            ? PageRenderer.renderBoardPreview(
+                page: notebook.pages[index], background: notebook.meta.boardBackground ?? .plain,
+                drawing: notebook.drawing(for: page.id), images: images,
+                width: PageSize.a4Portrait.width * Self.scale, maximumScale: Self.scale)
+            : PageRenderer.render(
+                page: pdfPage, drawing: notebook.drawing(for: page.id), objects: notebook.pages[index].objects,
+                images: images, scale: Self.scale)
         renderCount += 1
         cache.setObject(image, forKey: key as NSString)
         saveToDisk(image, for: page)

@@ -29,6 +29,7 @@ extension Notebook {
     /// is stored for their ids. Returns the ids of the new pages.
     @discardableResult
     func insertPages(_ entries: [PageEntry], at index: Int, actionName: String = "Insert Pages") throws -> [UUID] {
+        try refuseOnWhiteboard()
         guard document != nil else { throw NotebookError.pagesCannotBeChanged }
         guard !entries.isEmpty else { return [] }
         let start = min(max(index, 0), pages.count)
@@ -46,6 +47,7 @@ extension Notebook {
     /// goes next to (the one before `index`, or the first page when inserting at the start).
     @discardableResult
     func addPage(template: PageTemplate, at index: Int, size: PageSize? = nil) throws -> UUID {
+        try refuseOnWhiteboard()
         guard document != nil else { throw NotebookError.pagesCannotBeChanged }
         let start = min(max(index, 0), pages.count)
         let neighbor = pages[max(0, min(start, pages.count) - 1)]
@@ -64,6 +66,7 @@ extension Notebook {
     /// Copies each page right after its original, ink included. Returns the new ids.
     @discardableResult
     func duplicatePages(_ ids: Set<UUID>) throws -> [UUID] {
+        try refuseOnWhiteboard()
         guard let document else { throw NotebookError.pagesCannotBeChanged }
         var placed: [(index: Int, entry: PageEntry)] = []
         var copies = 0
@@ -84,6 +87,7 @@ extension Notebook {
     /// Removes pages from the notebook. Their ink files stay on disk (SPEC, "Data safety":
     /// nothing is deleted), and undo brings the pages back. The last page cannot be deleted.
     func deletePages(_ ids: Set<UUID>) throws {
+        try refuseOnWhiteboard()
         guard document != nil else { throw NotebookError.pagesCannotBeChanged }
         let doomed = ids.intersection(pages.map(\.id))
         guard !doomed.isEmpty else { return }
@@ -97,6 +101,7 @@ extension Notebook {
     /// `index` of the page list **without** the moved pages (`0` = first, the number of
     /// remaining pages = last). To drop before page X, pass X's index in that reduced list.
     func movePages(_ ids: Set<UUID>, toIndex index: Int) throws {
+        try refuseOnWhiteboard()
         guard document != nil else { throw NotebookError.pagesCannotBeChanged }
         let moving = pages.map(\.id).filter(ids.contains)
         let staying = pages.map(\.id).filter { !ids.contains($0) }
@@ -112,6 +117,7 @@ extension Notebook {
     /// Turns pages clockwise by 90, 180 or 270 degrees (or counter-clockwise with a negative
     /// value). The ink turns with the page, as PDFKit turns the page overlay.
     func rotatePages(_ ids: Set<UUID>, by degrees: Int) throws {
+        try refuseOnWhiteboard()
         guard document != nil else { throw NotebookError.pagesCannotBeChanged }
         let present = ids.intersection(pages.map(\.id))
         guard !present.isEmpty, degrees % 90 == 0, degrees % 360 != 0 else { return }
@@ -124,6 +130,7 @@ extension Notebook {
     /// keeps its id, its ink, its size and its rotation; only the PDF page underneath is
     /// replaced. Imported PDF pages are left alone.
     func changeTemplate(of ids: Set<UUID>, to template: PageTemplate) throws {
+        try refuseOnWhiteboard()
         guard document != nil else { throw NotebookError.pagesCannotBeChanged }
         guard template != .pdf else { return }
         var changes: [TemplateChange] = []
@@ -136,6 +143,12 @@ extension Notebook {
         }
         guard !changes.isEmpty else { return }
         performUndoableChange("Change Template") { applyTemplateChanges(changes) }
+    }
+
+    /// A whiteboard is one big page: no page operation applies to it, whichever way it is asked
+    /// for (sidebar, a page dragged from another window, page transfer, scan, insert).
+    private func refuseOnWhiteboard() throws {
+        if meta.isWhiteboard { throw NotebookError.whiteboardHasNoPages }
     }
 
     // MARK: Making pages
@@ -202,6 +215,7 @@ extension Notebook {
     /// putting them into another notebook (or this one). For another notebook, the image files
     /// must be copied too (see `PageTransfer`).
     func copyEntries(_ ids: Set<UUID>) throws -> [PageEntry] {
+        try refuseOnWhiteboard()  // a 10000 pt page does not belong in a notebook
         guard let document else { throw NotebookError.pagesCannotBeChanged }
         return pages.enumerated().compactMap { index, page in
             guard ids.contains(page.id), let copy = document.page(at: index)?.copy() as? PDFPage else { return nil }

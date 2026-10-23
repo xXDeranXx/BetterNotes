@@ -101,8 +101,12 @@ nonisolated struct PageMeta: Codable, Equatable, Identifiable, Sendable {
 /// - 4 (M9): an optional `outline` (see `OutlineEntry`). Missing means "not set up yet": it is
 ///   filled from the PDF's bookmarks or text the first time the outline is shown. The first
 ///   write keeps `meta.v3.json`.
+/// - 5 (whiteboard): an optional `kind` (missing = a notebook) and, for a whiteboard, its
+///   `boardBackground`. A whiteboard is a notebook with one big blank page (`Whiteboard.size`);
+///   a version 4 app would open it as a notebook and allow page operations. The first write
+///   keeps `meta.v4.json`.
 nonisolated struct NotebookMeta: Codable, Equatable, Sendable {
-    static let currentFormatVersion = 4
+    static let currentFormatVersion = 5
 
     var formatVersion: Int
     var id: UUID
@@ -114,6 +118,12 @@ nonisolated struct NotebookMeta: Codable, Equatable, Sendable {
     var pages: [PageMeta]
     /// `nil` until the outline was set up once (format version 4).
     var outline: [OutlineEntry]?
+    /// `nil` (a notebook) or `.whiteboard` (format version 5).
+    var kind: NotebookKind?
+    /// A whiteboard's background, drawn by the screen and the renderer, never into the PDF.
+    var boardBackground: BoardBackground?
+
+    var isWhiteboard: Bool { kind == .whiteboard }
 
     init(
         id: UUID = UUID(), title: String, createdAt: Date, coverColor: String, pages: [PageMeta]
@@ -125,6 +135,34 @@ nonisolated struct NotebookMeta: Codable, Equatable, Sendable {
         self.updatedAt = createdAt
         self.coverColor = coverColor
         self.pages = pages
+    }
+}
+
+/// What a `.inkbook` is (format version 5).
+nonisolated enum NotebookKind: String, Codable, Sendable {
+    case notebook, whiteboard
+}
+
+/// The pattern behind a whiteboard's ink.
+nonisolated enum BoardBackground: String, Codable, CaseIterable, Identifiable, Sendable {
+    case plain, dots, grid
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .plain: "Plain"
+        case .dots: "Dots"
+        case .grid: "Grid"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .plain: "square"
+        case .dots: "circle.grid.3x3"
+        case .grid: "squareshape.split.3x3"
+        }
     }
 }
 
@@ -143,6 +181,7 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
     case imageUnreadable
     case sameNotebook
     case exportHasNoPages
+    case whiteboardHasNoPages
 
     var errorDescription: String? {
         switch self {
@@ -172,6 +211,8 @@ nonisolated enum NotebookError: LocalizedError, Equatable {
             "Choose a different notebook. To copy pages inside this notebook, use Duplicate."
         case .exportHasNoPages:
             "There are no pages to export."
+        case .whiteboardHasNoPages:
+            "A whiteboard has no pages to add, move or change."
         }
     }
 }

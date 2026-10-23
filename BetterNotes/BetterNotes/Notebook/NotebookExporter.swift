@@ -25,6 +25,7 @@ enum NotebookExporter {
     static func export(
         _ notebook: Notebook, pageIDs: Set<UUID>? = nil, progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
+        if notebook.meta.isWhiteboard { return try await exportWhiteboard(notebook) }
         guard notebook.structureProblem == nil, let document = notebook.document,
             let pdfData = document.dataRepresentation()
         else { throw NotebookError.pagesCannotBeChanged }
@@ -52,6 +53,40 @@ enum NotebookExporter {
             // A detached task does not inherit cancellation, so pass it on by hand.
             let work = Task.detached(priority: .userInitiated) {
                 try write(job, to: fileURL, progress: progress)
+            }
+            try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+        } catch {
+            discard(fileURL)
+            throw error
+        }
+        return fileURL
+    }
+
+    /// A whiteboard as one PDF page around everything on it (`Whiteboard.contentRegion`): the
+    /// pattern and text as vectors, the ink as one picture whose resolution is lowered for big
+    /// regions so it fits in memory (`Whiteboard.inkScale`).
+    @MainActor
+    private static func exportWhiteboard(_ notebook: Notebook) async throws -> URL {
+        guard let page = notebook.pages.first else { throw NotebookError.exportHasNoPages }
+        let drawingData = notebook.drawing(for: page.id).dataRepresentation()
+        let objects = page.objects
+        let background = notebook.meta.boardBackground ?? .plain
+        let images = ObjectImageSource(package: notebook.package)
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "Export-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let fileURL = folder.appending(path: fileName(for: notebook.meta.title))
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let work = Task.detached(priority: .userInitiated) {
+                let drawing = (try? PKDrawing(data: drawingData)) ?? PKDrawing()
+                let region = Whiteboard.contentRegion(inkBounds: drawing.bounds, objects: objects)
+                let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: region.size))
+                try renderer.writePDF(to: fileURL) { context in
+                    context.beginPage()
+                    PageRenderer.drawBoard(
+                        region: region, background: background, drawing: drawing, objects: objects, images: images,
+                        in: context.cgContext, scale: 1, inkScale: Whiteboard.inkScale(for: region, preferred: inkScale))
+                }
             }
             try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
         } catch {

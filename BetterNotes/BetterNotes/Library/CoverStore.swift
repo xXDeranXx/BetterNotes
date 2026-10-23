@@ -40,9 +40,13 @@ final class CoverStore {
             let page = PDFDocument(url: package.pdfURL)?.page(at: 0)
         else { return nil }
         let drawing = (try? package.loadDrawing(for: first.id)) ?? nil
-        let image = PageRenderer.render(
-            page: page, drawing: drawing ?? .init(), objects: first.objects, images: ObjectImageSource(package: package),
-            scale: Self.scale)
+        let images = ObjectImageSource(package: package)
+        // A whiteboard shows the area around its ink, never the whole 10000 pt board at page scale.
+        let image = meta.isWhiteboard
+            ? PageRenderer.renderBoardPreview(
+                page: first, background: meta.boardBackground ?? .plain, drawing: drawing ?? .init(), images: images,
+                width: PageSize.a4Portrait.width * Self.scale, maximumScale: Self.scale)
+            : PageRenderer.render(page: page, drawing: drawing ?? .init(), objects: first.objects, images: images, scale: Self.scale)
         cache.setObject(image, forKey: key)
         if let data = image.jpegData(compressionQuality: 0.8) {
             Task.detached(priority: .background) {

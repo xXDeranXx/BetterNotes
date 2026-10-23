@@ -26,11 +26,28 @@ nonisolated struct NotebookPackage: Sendable {
         in parent: URL, title: String, template: PageTemplate, size: PageSize,
         coverColor: String, now: Date = .now
     ) throws -> NotebookPackage {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
-
         let page = PageMeta(template: template, size: size)
         let meta = NotebookMeta(title: title, createdAt: now, coverColor: coverColor, pages: [page])
+        return try create(meta, in: parent)
+    }
+
+    /// A new whiteboard: one blank page of `Whiteboard.size`; the background is drawn by the
+    /// screen and the renderer, so the PDF stays tiny.
+    static func createWhiteboard(
+        in parent: URL, title: String, background: BoardBackground, coverColor: String, now: Date = .now
+    ) throws -> NotebookPackage {
+        var meta = NotebookMeta(
+            title: title, createdAt: now, coverColor: coverColor,
+            pages: [PageMeta(template: .blank, size: Whiteboard.size)])
+        meta.kind = .whiteboard
+        meta.boardBackground = background
+        return try create(meta, in: parent)
+    }
+
+    private static func create(_ meta: NotebookMeta, in parent: URL) throws -> NotebookPackage {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+        let title = meta.title
         let pdf = try TemplateGenerator.makePDF(for: meta.pages)
 
         let staging = parent.appending(path: ".\(UUID().uuidString).tmp", directoryHint: .isDirectory)

@@ -189,7 +189,7 @@ struct NotebookOutlineTests {
 
         #expect(try Data(contentsOf: package.url.appending(path: "meta.v3.json")) == original)
         let reopened = try package.readMeta()
-        #expect(reopened.formatVersion == 4)
+        #expect(reopened.formatVersion == NotebookMeta.currentFormatVersion)
         #expect(reopened.outline?.map(\.title) == ["Saved"])
     }
 
