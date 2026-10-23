@@ -45,6 +45,8 @@ struct EditorView: View {
     @State private var tools = ToolController()
     /// Height of the pen toolbar (measured), so the first page starts below it.
     @State private var toolbarHeight: CGFloat = 0
+    /// Size of the editor area, so the toolbar can fit its buttons into it.
+    @State private var editorSize: CGSize = .zero
 
     init(notebook: Notebook) {
         self.notebook = notebook
@@ -81,9 +83,12 @@ struct EditorView: View {
                     // The system tool palette floats above full-screen covers (grid, camera).
                     isToolPickerHidden: isShowingGrid || insertKind == .scan,
                     topInset: tools.settings.toolbarPosition == .top && !tools.settings.usesSystemToolPicker ? toolbarHeight : 0)
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { editorSize = $0 }
                     .overlay(alignment: toolbarAlignment) {
                         if !tools.settings.usesSystemToolPicker {
-                            PenToolbar(tools: tools)
+                            PenToolbar(
+                                tools: tools,
+                                availableLength: tools.settings.toolbarPosition == .top ? editorSize.width : editorSize.height)
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { toolbarHeight = $0 }
                         }
                     }

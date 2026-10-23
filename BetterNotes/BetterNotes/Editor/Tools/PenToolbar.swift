@@ -6,6 +6,9 @@ import SwiftUI
 /// settings in `ToolController`.
 struct PenToolbar: View {
     @Bindable var tools: ToolController
+    /// The length the toolbar may take along its direction (the editor's width at the top, its
+    /// height at a side). The buttons shrink to fit it, and below the smallest size it scrolls.
+    var availableLength: CGFloat = .infinity
     @State private var popover: Popover?
 
     private enum Popover: Hashable { case pen(PenKind), eraser, shape, settings }
@@ -55,9 +58,56 @@ struct PenToolbar: View {
         }
     }
 
+    // MARK: Automatic size
+
+    static let largestButton: CGFloat = 44
+    /// Smaller is hard to hit with a finger; below this the toolbar scrolls instead.
+    static let smallestButton: CGFloat = 34
+    private static let spacing: CGFloat = 6
+    /// The outer padding (8 on each side) and the padding inside the background (8 on each side).
+    private static let padding: CGFloat = 32
+
+    /// Buttons: the pens, eraser, lasso, shapes, text box, ruler, presets, settings, hide.
+    private var buttonCount: Int { tools.settings.enabledPens.count + 8 }
+    /// Two dividers between the groups.
+    private static let dividerCount = 2
+
+    /// The length the expanded toolbar needs with buttons of `size`.
+    private func length(buttonSize size: CGFloat) -> CGFloat {
+        let items = buttonCount + Self.dividerCount
+        return Self.padding + CGFloat(buttonCount) * size + CGFloat(Self.dividerCount) + CGFloat(items - 1) * Self.spacing
+    }
+
+    /// As big as fits, between `smallestButton` and `largestButton`.
+    private var buttonSize: CGFloat {
+        guard availableLength.isFinite else { return Self.largestButton }
+        let fixed = length(buttonSize: 0)
+        let fitting = (availableLength - fixed) / CGFloat(buttonCount)
+        return min(max(fitting.rounded(.down), Self.smallestButton), Self.largestButton)
+    }
+
+    private var needsScrolling: Bool { length(buttonSize: buttonSize) > availableLength }
+
     private var expanded: some View {
-        let layout = isVertical ? AnyLayout(VStackLayout(spacing: 6)) : AnyLayout(HStackLayout(spacing: 6))
-        return layout {
+        let layout = isVertical ? AnyLayout(VStackLayout(spacing: Self.spacing)) : AnyLayout(HStackLayout(spacing: Self.spacing))
+        let content = layout {
+            buttons
+        }
+        .padding(8)
+        return Group {
+            if needsScrolling {
+                ScrollView(isVertical ? .vertical : .horizontal, showsIndicators: false) { content }
+                    // The scroll view takes what is left after the outer padding.
+                    .frame(maxWidth: isVertical ? nil : availableLength - 16, maxHeight: isVertical ? availableLength - 16 : nil)
+            } else {
+                content
+            }
+        }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .shadow(radius: 4, y: 1)
+    }
+
+    @ViewBuilder private var buttons: some View {
             ForEach(tools.settings.enabledPens, id: \.self) { kind in
                 penButton(kind)
             }
@@ -90,22 +140,20 @@ struct PenToolbar: View {
                 icon(isVertical ? "chevron.up.chevron.down" : "chevron.up", isSelected: false)
             }
             .accessibilityLabel("Hide tools")
-        }
-        .padding(8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-        .shadow(radius: 4, y: 1)
     }
 
     private var divider: some View {
-        Rectangle().fill(.quaternary).frame(width: isVertical ? 28 : 1, height: isVertical ? 1 : 28)
+        let long = (buttonSize * 0.64).rounded()
+        return Rectangle().fill(.quaternary).frame(width: isVertical ? long : 1, height: isVertical ? 1 : long)
     }
 
     private func icon(_ symbol: String, isSelected: Bool, tint: Color = .primary) -> some View {
-        Image(systemName: symbol)
-            .font(.title3)
+        let size = buttonSize
+        return Image(systemName: symbol)
+            .font(size >= 40 ? .title3 : .body)
             .foregroundStyle(tint)
-            .frame(width: 44, height: 44)
-            .background(isSelected ? Color.accentColor.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 12))
+            .frame(width: size, height: size)
+            .background(isSelected ? Color.accentColor.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: size * 0.27))
             .contentShape(Rectangle())
     }
 
