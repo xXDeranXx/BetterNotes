@@ -196,6 +196,16 @@ Decided:
     It passed 3 of 3 runs in the order that had failed before.
   - 450 unit tests and all UI tests pass.
 - **Tabs, detached tabs are locked (2026-10-23, found in review before the handover):** during a library action the strip still took taps. Tapping a detached tab would load its notebook from the old place, unclaimed, and `relocate` then failed on its precondition (a crash). Its × left a claim for a tab that no longer existed. Now `NotebookTab.isDetached` is set between `detachTabs` and `reattach`: `select` ignores such a tab, `closeTab` refuses it, the strip dims it, `reattach` skips tabs that are gone, and `relocate` is a guard instead of a precondition. Tested in `DetachedTabTests`; 452 unit tests pass.
+- **Tabs, iPad results and wrap-up (2026-10-23):**
+  - **iPad results**: 1 (swipe the app away, reopen) and 2 (reinstall from Xcode) work: tabs come back. 5 (pen popover from the bar) and 6 (landscape) work. 7: 10 open tabs used **115 MB**, so `loadedTabLimit` goes from 3 to **5**.
+  - **3**: the developer asked how to rename an open tab, so **Rename…** is in each tab's menu (an alert with a text field, not a popover, because of Scribble). `WindowSession.renameTab` works for the shown tab too: back to the library for a moment (typing finished, position kept), `detachTabs`, `LibraryOperations.rename`, `reattach`, then shown again.
+  - **Open bug from 3**: moving a notebook that was open in a tab from a second window's library made the first window unable to save it. Not reproduced: `OtherWindowMoveTests` (shown and background tab, single move and Move to…) is refused as designed. Needs the exact steps (see SPEC "Open questions").
+  - **4** was misunderstood (dragging a tab onto another tab). Meant: page grid, select pages, Move to / Copy to, choosing a notebook that is open in a background tab. Still to check.
+  - **Tests** (developer: "too many tests and it takes too long"; asked: UI tests only at handover, and merge them):
+    - The 5 UI tests became 2, each launching the app once and running the old tests as parts: `InkUITests.testInkShapesAndTabs` (undo then write, shape tool, tabs with relaunch, which runs last because it kills the app) and `ObjectsUITests.testObjects`. The tab part counts tabs relative to those already open.
+    - `scripts/test.sh fast <Suite>… | unit | ui` prints only summary lines; `ui` takes about 3.5 min.
+    - The rhythm is in SPEC "Rules learned".
+  - 454 unit tests and both UI tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

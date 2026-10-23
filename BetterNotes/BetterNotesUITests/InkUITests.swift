@@ -3,12 +3,33 @@ import XCTest
 /// End to end, with the real `PDFView` and `PKCanvasView`: an undone stroke must stay gone when
 /// the next stroke is drawn. Unit tests with a canvas that is not on screen could not show this
 /// bug (PencilKit kept its own copy of the strokes after `drawing` was assigned).
-final class UndoThenWriteUITests: XCTestCase {
+/// The ink, shape and tab tests run as parts of one test, so the app launches once instead of
+/// three times (the developer asked for shorter test runs, 2026-10-23). Each part starts in
+/// the library with a new notebook; tabs from earlier parts stay open.
+final class InkUITests: XCTestCase {
     @MainActor
-    func testAnUndoneStrokeStaysGoneAfterTheNextStroke() throws {
+    func testInkShapesAndTabs() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
         app.launch()
+        try undoneStrokeStaysGone(app)
+        try shapeIsDrawnUndoneAndKept(app)
+        try tabsKeepInkUndoAndTypingAndComeBackAfterRelaunch(app)  // last: it kills the app
+    }
+}
+
+/// Goes back to the library (from an editor) so the next part can make its notebook.
+@MainActor
+func showLibrary(_ app: XCUIApplication) {
+    if !app.buttons["Add"].exists, app.buttons["Library"].firstMatch.exists {
+        app.buttons["Library"].firstMatch.tap()
+    }
+}
+
+extension InkUITests {
+    @MainActor
+    func undoneStrokeStaysGone(_ app: XCUIApplication) throws {
+        showLibrary(app)
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
         app.buttons["New Notebook"].firstMatch.tap()
@@ -50,12 +71,10 @@ final class UndoThenWriteUITests: XCTestCase {
 /// End to end: a shape drawn with the shape tool lands on the page (the drag does not scroll),
 /// is one undo step, the canvas does not draw freehand ink after an undo while shapes are on,
 /// and the shape survives the next pen stroke.
-final class ShapeToolUITests: XCTestCase {
+extension InkUITests {
     @MainActor
-    func testAShapeIsDrawnUndoneAndKeptByTheNextStroke() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
-        app.launch()
+    func shapeIsDrawnUndoneAndKept(_ app: XCUIApplication) throws {
+        showLibrary(app)
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
         app.buttons["New Notebook"].firstMatch.tap()
@@ -131,12 +150,10 @@ final class ShapeToolUITests: XCTestCase {
 /// End to end for tabs (tabs step 6): two notebooks as tabs, ink in each, switching keeps the
 /// ink and the first tab's undo history, typing is kept when switching away in the middle of
 /// it, and the tabs come back after the app was killed and launched again.
-final class TabsUITests: XCTestCase {
+extension InkUITests {
     @MainActor
-    func testTwoTabsKeepInkUndoAndTypingAndComeBackAfterRelaunch() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["-skipTabRestore", "YES"]
-        app.launch()
+    func tabsKeepInkUndoAndTypingAndComeBackAfterRelaunch(_ app: XCUIApplication) throws {
+        showLibrary(app)
         let window = app.windows.firstMatch
         func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
             window.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
@@ -164,6 +181,7 @@ final class TabsUITests: XCTestCase {
             sleep(2)
         }
         let tabs = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'tab:'"))
+        let before = tabs.count  // tabs of the earlier parts stay open
 
         // Notebook 1: a stroke at 0.4, then a text box that is still being typed in.
         newNotebook()
@@ -185,10 +203,10 @@ final class TabsUITests: XCTestCase {
         app.buttons["Lasso"].firstMatch.tap()
         app.buttons["Pen"].firstMatch.tap()
         stroke(y: 0.5)
-        XCTAssertEqual(tabs.count, 2)
+        XCTAssertEqual(tabs.count, before + 2)
 
         // Back to notebook 1: its ink and the typed text are there, notebook 2's ink is not.
-        tabs.element(boundBy: 0).tap()
+        tabs.element(boundBy: before).tap()
         sleep(2)
         var page = try pixels("first tab again")
         XCTAssertTrue(page.hasDarkLine(atX: 0.6, nearY: 0.4), "the first tab's stroke is missing")
@@ -215,7 +233,7 @@ final class TabsUITests: XCTestCase {
         let restored = again.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'tab:'"))
         XCTAssertTrue(again.buttons["Undo"].firstMatch.waitForExistence(timeout: 10), "the shown tab was not restored")
         sleep(2)
-        XCTAssertEqual(restored.count, 2)
+        XCTAssertEqual(restored.count, before + 2)
         page = try pixels("after relaunch")
         XCTAssertTrue(page.hasDarkLine(atX: 0.6, nearY: 0.4), "the restored tab lost its stroke")
     }

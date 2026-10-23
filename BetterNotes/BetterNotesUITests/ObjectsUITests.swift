@@ -1,12 +1,22 @@
 import XCTest
 
 /// End to end (M8): paste an image onto a page, select and delete it, undo, and type a text box.
+/// Both object tests run as parts of one test, so the app launches once (see `InkUITests`).
 final class ObjectsUITests: XCTestCase {
     @MainActor
-    func testPasteSelectDeleteAndTypeText() throws {
+    func testObjects() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
         app.launch()
+        try pasteSelectDeleteAndTypeText(app)
+        try longPressPastesImageAndTextWhereTheFingerWas(app)
+    }
+}
+
+extension ObjectsUITests {
+    @MainActor
+    func pasteSelectDeleteAndTypeText(_ app: XCUIApplication) throws {
+        showLibrary(app)
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
         app.buttons["New Notebook"].firstMatch.tap()
@@ -88,10 +98,8 @@ final class ObjectsUITests: XCTestCase {
     /// an image lands under the finger, text becomes a text box, and the text tool does not also
     /// place a box when the finger lifts.
     @MainActor
-    func testLongPressPastesImageAndTextWhereTheFingerWas() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["-skipTabRestore", "YES"]  // start in the library, not in old tabs
-        app.launch()
+    func longPressPastesImageAndTextWhereTheFingerWas(_ app: XCUIApplication) throws {
+        showLibrary(app)
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 10))
         app.buttons["Add"].tap()
         app.buttons["New Notebook"].firstMatch.tap()

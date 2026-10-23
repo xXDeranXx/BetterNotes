@@ -191,3 +191,54 @@ struct DetachedTabTests {
         #expect(!registry.isOpen(at: newURL))
     }
 }
+
+/// The developer's report (2026-10-23): a notebook open in window 1 was moved from window 2's library.
+@MainActor
+struct OtherWindowMoveTests {
+    @Test func movingFromAnotherWindowIsRefusedShownOrInBackground() async throws {
+        for background in [false, true] {
+            let temp = try TempFolder()
+            let registry = OpenNotebookRegistry()
+            let windowOne = WindowSession(registry: registry), windowTwo = WindowSession(registry: registry)
+            let library = LibraryModel(location: LibraryLocation(root: temp.url), registry: registry)
+            library.tabHost = windowTwo
+            let folder = try library.operations.createFolder(named: "Archive", in: temp.url)
+            let package = try makeNotebook(in: temp.url, title: "Open")
+            try windowOne.open(package)
+            if background { windowOne.showLibrary() }
+
+            await library.move(package.url, into: folder)
+            #expect(library.errorMessage == LibraryError.openInAnotherWindow.errorDescription)
+            library.errorMessage = nil
+            await library.moveSelection(into: folder)  // nothing selected: no change
+            library.toggleSelection(package.url)
+            await library.moveSelection(into: folder)
+
+            #expect(FileManager.default.fileExists(atPath: package.url.path), "moved although open (background: \(background))")
+        }
+    }
+}
+
+/// Renaming from the tab's menu (2026-10-23), also for the shown tab.
+@MainActor
+struct RenameTabTests {
+    @Test func theShownTabIsRenamedAndShownAgain() async throws {
+        // The real Documents folder is used by renameTab; work on a notebook created there.
+        let package = try makeNotebook(in: LibraryLocation.documents.root, title: "Rename Me \(UUID().uuidString.prefix(6))")
+        let renamed = "Renamed \(UUID().uuidString.prefix(6))"
+        let registry = OpenNotebookRegistry()
+        let window = WindowSession(registry: registry)
+        try window.open(package)
+        let tab = window.tabs[0]
+
+        try await window.renameTab(tab.id, to: renamed)
+
+        #expect(tab.title == renamed)
+        #expect(window.activeTab === tab)
+        #expect(window.notebook?.meta.title == renamed)
+        #expect(registry.owner(of: tab.url)?.tab == tab.id)
+        #expect(!FileManager.default.fileExists(atPath: package.url.path))
+        await window.close()
+        try? FileManager.default.removeItem(at: tab.url)
+    }
+}

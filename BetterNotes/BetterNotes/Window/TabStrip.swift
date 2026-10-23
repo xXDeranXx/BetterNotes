@@ -18,6 +18,10 @@ struct TabStrip: View {
     /// The tab being dragged, so drops from anywhere else (text, PDFs) are ignored.
     @State private var draggedTab: UUID?
     @State private var errorMessage: String?
+    /// The tab being renamed, and the name typed so far (an alert, not a popover: the Pencil
+    /// would write into a text field in a popover with Scribble).
+    @State private var renaming: NotebookTab?
+    @State private var newName = ""
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -44,7 +48,25 @@ struct TabStrip: View {
         .padding(.top, 6)
         .frame(height: 38)
         .background(theme.stripColor(colorScheme).ignoresSafeArea(edges: .top))  // also behind the status bar
-        .alert("Could not close the tab", isPresented: Binding(
+        .alert("Rename Notebook", isPresented: Binding(
+            get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+        ) {
+            TextField("Name", text: $newName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                guard let tab = renaming else { return }
+                let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty, name != tab.title else { return }
+                Task {
+                    do {
+                        try await session.renameTab(tab.id, to: name)
+                    } catch {
+                        errorMessage = "\"\(tab.title)\" could not be renamed: \(error.localizedDescription)"
+                    }
+                }
+            }
+        }
+        .alert("Could not change the tab", isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
         ) {
             Button("OK", role: .cancel) {}
@@ -77,6 +99,10 @@ struct TabStrip: View {
             select: { select(tab) }, close: { close(tab) })
             .id(tab.id)
             .contextMenu {
+                Button("Rename…", systemImage: "pencil") {
+                    newName = tab.title
+                    renaming = tab
+                }
                 Button("Close Other Tabs", systemImage: "xmark.square") { closeOthers(keeping: tab) }
                     .disabled(session.tabs.count < 2)
             }

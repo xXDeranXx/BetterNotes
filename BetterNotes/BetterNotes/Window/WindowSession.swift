@@ -15,7 +15,7 @@ import SwiftUI
 @Observable
 final class WindowSession {
     /// The active tab plus the most recent background ones that keep their model.
-    static let loadedTabLimit = 3
+    static let loadedTabLimit = 5  // 10 tabs measured 115 MB on the iPad (2026-10-23)
 
     private(set) var tabs: [NotebookTab] = []
     /// nil while the library is shown.
@@ -247,6 +247,31 @@ final class WindowSession {
                 tabs.removeAll { $0 === tab }
             }
         }
+    }
+
+    /// Renames a tab's notebook (its title and its `.inkbook` name, as in the library). The shown
+    /// tab is closed in the editor for the moment (typing finished, saved), renamed, and shown
+    /// again at the same spot.
+    func renameTab(_ id: UUID, to name: String) async throws {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        let wasShown = id == activeTabID
+        if wasShown { showLibrary() }  // the editor stores its position and goes away
+        let old = tab.url
+        let operations = LibraryOperations(location: .documents, registry: registry)
+        do {
+            let detached = try await detachTabs(under: old)
+            do {
+                let new = try await Task.detached { try operations.rename(old, to: name) }.value
+                reattach(detached, movedFrom: old, to: new)
+            } catch {
+                reattach(detached, movedFrom: old, to: old)
+                throw error
+            }
+        } catch {
+            if wasShown { try? select(id) }
+            throw error
+        }
+        if wasShown { try select(id) }
     }
 
     /// `url` after its folder (or itself) moved from `old` to `new`.
