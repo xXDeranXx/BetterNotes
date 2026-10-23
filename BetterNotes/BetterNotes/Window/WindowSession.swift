@@ -81,7 +81,8 @@ final class WindowSession {
     /// Shows a tab, loading its notebook again if it was released. A notebook that cannot be
     /// loaded any more (deleted or broken in the Files app) loses its tab, and the error says why.
     func select(_ id: UUID) throws {
-        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        // A detached tab's notebook is being moved by the library right now.
+        guard let tab = tabs.first(where: { $0.id == id }), !tab.isDetached else { return }
         do {
             _ = try tab.load()
         } catch {
@@ -103,6 +104,7 @@ final class WindowSession {
     @discardableResult
     func closeTab(_ id: UUID) async -> Bool {
         guard let tab = tabs.first(where: { $0.id == id }) else { return true }
+        guard !tab.isDetached else { return false }  // the library is moving its notebook
         if id == activeTabID { beforeLeavingTab?() }  // typed text goes into the closing save
         if let notebook = tab.notebook {
             await notebook.saveChanges()
@@ -220,7 +222,10 @@ final class WindowSession {
         }
         // The shown tab may have changed during the saves.
         guard !found.contains(where: { $0.id == activeTabID }) else { throw LibraryError.isOpen }
-        for tab in found { registry.release(tab.url) }
+        for tab in found {
+            tab.isDetached = true  // not shown or closed until `reattach`
+            registry.release(tab.url)
+        }
         return DetachedTabs(tabs: found)
     }
 
@@ -229,6 +234,8 @@ final class WindowSession {
     /// (trashed). A tab whose notebook another window claimed meanwhile is closed.
     func reattach(_ detached: DetachedTabs, movedFrom old: URL, to new: URL?) {
         for tab in detached.tabs {
+            tab.isDetached = false
+            guard tabs.contains(where: { $0 === tab }) else { continue }  // closed meanwhile: claim nothing
             guard let new else {
                 tabs.removeAll { $0 === tab }
                 continue

@@ -195,6 +195,7 @@ Decided:
 
     It passed 3 of 3 runs in the order that had failed before.
   - 450 unit tests and all UI tests pass.
+- **Tabs, detached tabs are locked (2026-10-23, found in review before the handover):** during a library action the strip still took taps. Tapping a detached tab would load its notebook from the old place, unclaimed, and `relocate` then failed on its precondition (a crash). Its × left a claim for a tab that no longer existed. Now `NotebookTab.isDetached` is set between `detachTabs` and `reattach`: `select` ignores such a tab, `closeTab` refuses it, the strip dims it, `reattach` skips tabs that are gone, and `relocate` is a guard instead of a precondition. Tested in `DetachedTabTests`; 452 unit tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

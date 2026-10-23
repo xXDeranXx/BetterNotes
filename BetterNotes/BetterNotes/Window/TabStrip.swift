@@ -155,6 +155,7 @@ private struct TabChip: View {
             // A plain Divider would be horizontal here (it follows the stack around it).
             if showsSeparator { Rectangle().fill(theme.secondaryText.opacity(0.4)).frame(width: 1, height: 14) }
         }
+        .opacity(tab.isDetached ? 0.5 : 1)  // the library is moving its notebook
         .contentShape(Rectangle())
         .onTapGesture(perform: select)
         .accessibilityElement(children: .contain)

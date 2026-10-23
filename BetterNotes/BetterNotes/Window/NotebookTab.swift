@@ -49,9 +49,13 @@ final class NotebookTab: Identifiable {
 
     var isLoaded: Bool { notebook != nil }
 
+    /// While the library renames, moves or trashes this tab's notebook (between
+    /// `WindowSession.detachTabs` and `reattach`): the tab can be neither shown nor closed.
+    var isDetached = false
+
     /// The notebook was renamed or moved in the library while this tab was released.
     func relocate(to newURL: URL) {
-        precondition(notebook == nil, "only a released tab can follow its notebook")
+        guard notebook == nil else { return }  // never happens: a detached tab cannot load
         url = newURL
         if let meta = try? NotebookPackage(url: newURL).readMeta() {
             title = meta.title

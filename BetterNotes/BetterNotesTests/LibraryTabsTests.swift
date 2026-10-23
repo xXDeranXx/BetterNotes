@@ -141,3 +141,53 @@ struct LibraryTabsTests {
         #expect(WindowSession.rebase(URL(filePath: "/tmp/Lib/Unix/A.inkbook"), from: old, to: new).path == "/tmp/Lib/Unix/A.inkbook")
     }
 }
+
+/// A detached tab (its notebook is being moved by the library) can be neither shown nor closed.
+@MainActor
+struct DetachedTabTests {
+    @Test func aDetachedTabIgnoresSelectAndCloseAndThenFollows() async throws {
+        let temp = try TempFolder()
+        let registry = OpenNotebookRegistry()
+        let window = WindowSession(registry: registry)
+        let packages = [try makeNotebook(in: temp.url, title: "Moving"), try makeNotebook(in: temp.url, title: "Other")]
+        for package in packages { try window.open(package) }
+        window.showLibrary()
+        let tab = window.tabs[0]
+
+        let detached = try await window.detachTabs(under: packages[0].url)
+        #expect(tab.isDetached)
+        try window.select(tab.id)                // tapped during the action
+        #expect(window.notebook == nil && !tab.isLoaded)
+        #expect(await window.closeTab(tab.id) == false)
+        #expect(window.tabs.count == 2)
+
+        let newURL = temp.url.appending(path: "Moved.inkbook")
+        try FileManager.default.moveItem(at: packages[0].url, to: newURL)
+        window.reattach(detached, movedFrom: packages[0].url, to: newURL)
+
+        #expect(!tab.isDetached)
+        #expect(OpenNotebookRegistry.key(tab.url) == OpenNotebookRegistry.key(newURL))
+        #expect(registry.owner(of: newURL)?.tab == tab.id)
+        try window.select(tab.id)
+        #expect(window.notebook?.meta.title == "Moving")
+    }
+
+    @Test func aTabClosedDuringTheActionClaimsNothing() async throws {
+        let temp = try TempFolder()
+        let registry = OpenNotebookRegistry()
+        let window = WindowSession(registry: registry)
+        let package = try makeNotebook(in: temp.url, title: "Moving")
+        try window.open(package)
+        window.showLibrary()
+        let tab = window.tabs[0]
+        let detached = try await window.detachTabs(under: package.url)
+        tab.isDetached = false                   // as if it had been closed anyway
+        #expect(await window.closeTab(tab.id))
+
+        let newURL = temp.url.appending(path: "Moved.inkbook")
+        window.reattach(detached, movedFrom: package.url, to: newURL)
+
+        #expect(window.tabs.isEmpty)
+        #expect(!registry.isOpen(at: newURL))
+    }
+}
