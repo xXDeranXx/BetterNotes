@@ -374,22 +374,32 @@ final class PageOverlayView: UIView {
     }
 
     /// On a board the canvas keeps finger touches (it is the scroll view), so PencilKit's own
-    /// finger long presses (in its selection layer: the "Select All / Insert Space" menu, seen on
-    /// the iPad) competed with ours, which selects an object or offers Paste. PencilKit's now
-    /// wait until ours has failed. Only finger ones: the Pencil's own long press stays.
+    /// finger gestures in its selection layer competed with our long press, which selects an
+    /// object or offers Paste: its long presses showed "Select All / Insert Space" instead, and
+    /// after a short hold its taps did so on lift, replacing our Paste (both seen on the iPad).
+    /// They now wait until ours has failed; a quick tap is not delayed, because ours fails as
+    /// soon as the finger lifts early. Only gestures that take fingers; the Pencil's stay.
     func deferCanvasLongPresses() {
         guard isBoard else { return }
         var views: [UIView] = [canvas]
         while let view = views.popLast() {
             views.append(contentsOf: view.subviews)
-            for case let press as UILongPressGestureRecognizer in view.gestureRecognizers ?? []
-            where press !== objectLongPress && !deferredLongPresses.contains(ObjectIdentifier(press)) {
-                let types = press.allowedTouchTypes.map(\.intValue)
+            for gesture in view.gestureRecognizers ?? []
+            where gesture !== objectLongPress && Self.competesWithHold(gesture)
+                && !deferredLongPresses.contains(ObjectIdentifier(gesture))
+            {
+                let types = gesture.allowedTouchTypes.map(\.intValue)
                 guard types.isEmpty || types.contains(UITouch.TouchType.direct.rawValue) else { continue }
-                press.require(toFail: objectLongPress)
-                deferredLongPresses.insert(ObjectIdentifier(press))
+                gesture.require(toFail: objectLongPress)
+                deferredLongPresses.insert(ObjectIdentifier(gesture))
             }
         }
+    }
+
+    /// Long presses and taps (also PencilKit's "tap and a half"), not pans: a drag must start at once.
+    private static func competesWithHold(_ gesture: UIGestureRecognizer) -> Bool {
+        gesture is UILongPressGestureRecognizer || gesture is UITapGestureRecognizer
+            || String(describing: type(of: gesture)).contains("TapAndAHalf")
     }
     private var deferredLongPresses: Set<ObjectIdentifier> = []
 
