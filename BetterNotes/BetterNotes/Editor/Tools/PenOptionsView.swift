@@ -127,6 +127,7 @@ struct EraserOptionsView: View {
 struct ToolbarSettingsView: View {
     @Bindable var tools: ToolController
     @AppStorage(DebugOverlay.settingKey) private var showsDebugOverlay = false
+    @AppStorage(AppTheme.settingKey) private var theme = AppTheme.system
 
     var body: some View {
         NavigationStack {
@@ -154,6 +155,11 @@ struct ToolbarSettingsView: View {
                                 Button(kind.displayName, systemImage: kind.symbol) { tools.settings.setPen(kind, enabled: true) }
                             }
                         }
+                    }
+                }
+                Section("Appearance") {
+                    Picker("Theme", selection: $theme) {
+                        ForEach(AppTheme.allCases) { Text($0.displayName).tag($0) }
                     }
                 }
                 Section("Gestures") {

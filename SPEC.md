@@ -179,6 +179,7 @@ The short version of `docs/DECISIONS.md`: rules that code must keep following. W
 
 **Building and testing**
 - Prefix commands with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. Run `xcodebuild build` before UI tests (`-only-testing` may run an old app). Always `-parallel-testing-enabled NO`.
+- Test rhythm: the touched suite while building; all unit tests before each commit; UI tests only when their area changed (canvas/undo, shapes, objects, editor top bar); the iPad checklist for heat, latency and feel.
 - Swift 6, main-actor isolation by default; file and model code that runs off the main thread is `nonisolated`. `Info.plist` lives next to the `.xcodeproj`, outside the synchronized source folder.
 - Unit tests with a canvas that is not on screen cannot show PencilKit's behaviour. Changes to canvas setup or syncing need the end-to-end UI tests (`UndoThenWriteUITests`, `ShapeToolUITests`, `ObjectsUITests`) and a "draw, force-quit, reopen" check.
 - UI tests: tapping an already selected tool opens its options (tool settings survive launches); `typeText` cannot reach a text view inside PDFView's page (tap `app.keys`); the simulator shares its clipboard with the test.

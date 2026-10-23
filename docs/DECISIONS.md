@@ -154,6 +154,13 @@ Decided:
   - **Undo and redo** moved out of the bar into a floating pill (`UndoRedoPill`) at the top left of the page, below the pen toolbar; top right when the pen toolbar is on the left side.
   - **UI tests** now find Undo and Library with `app.buttons[...]`.
   - Checked with simulator screenshots in portrait (editor with 3 tabs, library) and landscape.
+- **Tabs, themes and browser-sized tabs (2026-10-23, after the iPad check):**
+  - **Developer's feedback**: "tab bar is pure dark ugly" (dark mode), "cannot see undo button", wants smaller tabs like a browser.
+  - **Theme**: `AppTheme` (System, Blue, Graphite, Green; chosen with "Theme" under "Appearance" in the toolbar settings, `@AppStorage("appTheme")`, the same in every window) colors the strip and the editor's top bar, with a light and a dark shade each. The colors are picked from the view's `colorScheme` by hand, not left to UIKit: tinted themes draw the bar in dark style (`toolbarColorScheme(.dark)`, so its buttons are white), which would otherwise resolve the bar's color to the dark shade while the active tab used the light one. Tinted themes use white text in the strip.
+  - **Tabs**: 32 pt high in a 38 pt strip, footnote text, 120 to 220 pt wide (they no longer stretch over the whole width; with many tabs the strip scrolls).
+  - **Undo and redo**: the pill is solid (system background) with a border and a shadow; the see-through material vanished on the grey around the page.
+  - **Testing rhythm** (the developer's standing rule, also in SPEC "Rules learned"): the touched suite while building; all unit tests before each commit; UI tests only when their area changed; the iPad for heat, latency and feel. Xcode's template UI tests (`BetterNotesUITests.swift`: `testExample`, `testLaunchPerformance`) were deleted, about 40 s less per UI run.
+  - Checked with screenshots (Blue in light mode, System in dark mode). 434 unit tests and all UI tests pass.
 - (new entries go here, newest last)
 
 ## Plans of the finished milestones

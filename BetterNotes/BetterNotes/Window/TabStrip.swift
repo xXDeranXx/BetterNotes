@@ -1,31 +1,31 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The row of open notebooks above the library and the editor, laid out like Goodnotes: the
-/// house (library) on the left, then the tabs sharing the width. The active tab has the color
-/// of the editor's top bar, so tab and bar look like one piece. Tap a tab to show it, × to
+/// The row of open notebooks above the library and the editor, laid out like Goodnotes and a
+/// browser's tab bar: the house (library) on the left, then small tabs that share the width
+/// up to `maximumTabWidth`. The active tab has the color of the editor's top bar (see
+/// `AppTheme`), so tab and bar look like one piece. Tap a tab to show it, × to
 /// close it, hold for Close Other Tabs, and drag to reorder.
 ///
 /// A horizontal `ScrollView` + `HStack`, not a `List` (see "Rules learned": lists swallow drops).
 struct TabStrip: View {
-    /// The editor's top bar and the active tab.
-    static let barColor = Color(.systemBackground)
-    /// The strip behind the other tabs.
-    static let stripColor = Color(.systemGray5)
-    /// Below this width the tabs stop shrinking and the strip scrolls instead.
-    static let minimumTabWidth: CGFloat = 150
+    /// Tabs shrink from the widest to the narrowest as more open; below that the strip scrolls.
+    static let maximumTabWidth: CGFloat = 220
+    static let minimumTabWidth: CGFloat = 120
 
     @Environment(WindowSession.self) private var session
+    @AppStorage(AppTheme.settingKey) private var theme = AppTheme.system
     /// The tab being dragged, so drops from anywhere else (text, PDFs) are ignored.
     @State private var draggedTab: UUID?
     @State private var errorMessage: String?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 0) {
             homeButton
             GeometryReader { geometry in
                 let count = CGFloat(max(session.tabs.count, 1))
-                let width = max(Self.minimumTabWidth, geometry.size.width / count)
+                let width = min(Self.maximumTabWidth, max(Self.minimumTabWidth, geometry.size.width / count))
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
@@ -41,9 +41,9 @@ struct TabStrip: View {
                 }
             }
         }
-        .padding(.top, 4)
-        .frame(height: 44)
-        .background(Self.stripColor.ignoresSafeArea(edges: .top))  // also behind the status bar
+        .padding(.top, 6)
+        .frame(height: 38)
+        .background(theme.stripColor(colorScheme).ignoresSafeArea(edges: .top))  // also behind the status bar
         .alert("Could not close the tab", isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
         ) {
@@ -62,8 +62,9 @@ struct TabStrip: View {
             Task { await session.showLibraryAnimated() }
         }
         .labelStyle(.iconOnly)
-        .font(.body.weight(.medium))
-        .frame(width: 52, height: 40)
+        .font(.callout.weight(.medium))
+        .foregroundStyle(isActive ? theme.primaryText : theme.secondaryText)
+        .frame(width: 46, height: 32)
     }
 
     private func chip(for tab: NotebookTab, at index: Int) -> some View {
@@ -71,7 +72,9 @@ struct TabStrip: View {
         // A thin line between two inactive tabs, as in Goodnotes.
         let next = session.tabs.indices.contains(index + 1) ? session.tabs[index + 1].id : nil
         let showsSeparator = !isActive && next != nil && next != session.activeTabID
-        return TabChip(tab: tab, isActive: isActive, showsSeparator: showsSeparator, select: { select(tab) }, close: { close(tab) })
+        return TabChip(
+            tab: tab, theme: theme, barColor: theme.barColor(colorScheme), isActive: isActive, showsSeparator: showsSeparator,
+            select: { select(tab) }, close: { close(tab) })
             .id(tab.id)
             .contextMenu {
                 Button("Close Other Tabs", systemImage: "xmark.square") { closeOthers(keeping: tab) }
@@ -120,6 +123,8 @@ struct TabStrip: View {
 
 private struct TabChip: View {
     let tab: NotebookTab
+    let theme: AppTheme
+    let barColor: Color
     let isActive: Bool
     let showsSeparator: Bool
     let select: () -> Void
@@ -128,27 +133,27 @@ private struct TabChip: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(tab.title)
-                .font(.subheadline.weight(isActive ? .semibold : .regular))
-                .foregroundStyle(isActive ? .primary : .secondary)
+                .font(.footnote.weight(isActive ? .semibold : .regular))
+                .foregroundStyle(isActive ? theme.primaryText : theme.secondaryText)
                 .lineLimit(1)
-                .padding(.leading, 14)
+                .padding(.leading, 10)
             Spacer(minLength: 0)
             Button(action: close) {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 32, height: 32)
+                    .font(.caption2.weight(.bold))
+                    .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .padding(.trailing, 4)
+            .foregroundStyle(theme.secondaryText)
+            .padding(.trailing, 2)
             .accessibilityLabel("Close \(tab.title)")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(isActive ? TabStrip.barColor : .clear, in: UnevenRoundedRectangle(topLeadingRadius: 10, topTrailingRadius: 10))
+        .background(isActive ? barColor : .clear, in: UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8))
         .overlay(alignment: .trailing) {
             // A plain Divider would be horizontal here (it follows the stack around it).
-            if showsSeparator { Rectangle().fill(Color(.separator)).frame(width: 1, height: 18) }
+            if showsSeparator { Rectangle().fill(theme.secondaryText.opacity(0.4)).frame(width: 1, height: 14) }
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: select)

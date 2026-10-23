@@ -39,6 +39,8 @@ struct NotebookEditor: UIViewControllerRepresentable {
 struct EditorView: View {
     @Environment(WindowSession.self) private var session
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(AppTheme.settingKey) private var theme = AppTheme.system
     let notebook: Notebook
     /// This editor's own tab: its scroll position is written here, never to
     /// `session.activeTab`, which already points at the next tab while this editor goes away.
@@ -189,8 +191,10 @@ struct EditorView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 // Like Goodnotes: the title is in the tab, and the bar has the strip's color, so
                 // the active tab and the bar look like one piece (see `TabStrip`).
-                .toolbarBackground(TabStrip.barColor, for: .navigationBar)
+                .toolbarBackground(theme.barColor(colorScheme), for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
+                // Tinted themes are dark in light mode too, so the bar's buttons turn white.
+                .toolbarColorScheme(theme.isTinted ? .dark : nil, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
                     ToolbarItemGroup(placement: .topBarLeading) {
@@ -247,11 +251,14 @@ private struct UndoRedoPill: View {
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
-        .font(.body.weight(.medium))
+        .font(.body.weight(.semibold))
+        .foregroundStyle(.primary)
         .frame(height: 36)
         .padding(.horizontal, 4)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color(.separator).opacity(0.5), lineWidth: 0.5))
+        // Solid, with a shadow: a see-through material vanished on the grey around the page.
+        .background(Color(.systemBackground), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
     }
 }
 
