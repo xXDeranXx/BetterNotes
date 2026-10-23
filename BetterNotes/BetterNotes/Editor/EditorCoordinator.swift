@@ -413,9 +413,10 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         let color = HexColor.color(pen.setting.colorHex) ?? .black
         // A plain line in roughly the drawn width; textures show once the Pencil is lifted.
         let (alpha, widthFactor): (CGFloat, CGFloat) = switch pen.kind {
-        case .marker: (0.4, 1)
+        // Alphas matched by eye on the iPad: the highlighter result is stronger, the pencil lighter.
+        case .marker: (0.6, 1)
         case .watercolor: (0.5, 0.9)
-        case .pencil: (0.8, 0.55)
+        case .pencil: (0.5, 0.55)
         case .crayon: (1, 1.3)
         default: (1, 1)
         }
@@ -427,7 +428,8 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private func snapStrokes(_ shape: SnappedShape) -> [PKStroke]? {
         guard let pen = snappingPen, let points = shape.outline.pieces.first else { return nil }
         let key = TemplateKey(kind: pen.kind, width: pen.setting.width)
-        let template = inkTemplates[key] ?? InkTemplate.fallback(for: pen.kind.inkType, width: CGFloat(pen.setting.width))
+        let template = (inkTemplates[key] ?? InkTemplate.fallback(for: pen.kind.inkType, width: CGFloat(pen.setting.width)))
+            .drawable(with: pen.kind.inkType, width: CGFloat(pen.setting.width))
         let ink = PKInk(pen.kind.inkType, color: HexColor.color(pen.setting.colorHex) ?? .black)
         return [template.stroke(through: points, ink: ink)]
     }

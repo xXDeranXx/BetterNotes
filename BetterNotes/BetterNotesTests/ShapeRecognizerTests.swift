@@ -360,3 +360,17 @@ struct HoldGestureTests {
         #expect(overlay.gestureRecognizer(hold, shouldRecognizeSimultaneouslyWith: old.drawingGestureRecognizer))
     }
 }
+
+struct InkTemplateDrawableTests {
+    @Test func aThinFountainPenShapeIsNeverInvisible() {
+        // A copied median of 1.6 would draw nothing with the fountain pen (2 or less is invisible).
+        let thin = InkTemplate(size: CGSize(width: 1.6, height: 1.6), opacity: 1, force: 0.4, azimuth: 1, altitude: 1)
+        for ink: PKInkingTool.InkType in [.fountainPen, .pen, .monoline] {
+            #expect(thin.drawable(with: ink, width: 2.5).size.width > 2, "\(ink.rawValue)")
+        }
+        // Other inks keep the copied size; a big size is never made smaller.
+        #expect(thin.drawable(with: .pencil, width: 2.5).size.width == 1.6)
+        let big = InkTemplate(size: CGSize(width: 9, height: 9), opacity: 1, force: 1, azimuth: 1, altitude: 1)
+        #expect(big.drawable(with: .fountainPen, width: 2.5).size.width == 9)
+    }
+}

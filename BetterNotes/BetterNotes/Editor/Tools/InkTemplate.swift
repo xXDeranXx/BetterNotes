@@ -37,7 +37,7 @@ nonisolated struct InkTemplate: Equatable, Sendable {
         var opacity: CGFloat = 1
         switch ink {
         case .pen, .monoline: size = LineDasher.pointSize(forWidth: width)  // measured in M7a: draws `width`
-        case .fountainPen: size = width
+        case .fountainPen: size = max(width, 2.5)  // 2 or less draws nothing
         case .watercolor: size = width * 0.53; opacity = 0.17
         case .crayon: size = width * 0.7
         case .pencil: size = width * 0.27; opacity = 0.39
@@ -46,6 +46,25 @@ nonisolated struct InkTemplate: Equatable, Sendable {
         }
         return InkTemplate(size: CGSize(width: size, height: size), opacity: opacity, force: 1,
                            azimuth: .pi / 2, altitude: .pi / 2)
+    }
+
+    /// This template made safe to draw with `ink`. Measured (offscreen renders, 2026-10-23): the
+    /// pen, ballpoint and fountain pen draw **nothing** for a point size of 2 or less, at any
+    /// pressure or tilt (they draw about `2 x (size - 2)` wide). A thin fountain pen's own strokes
+    /// still show because their size changes along the stroke, but the copied median can fall
+    /// under 2, and the snapped shape was invisible (seen on the iPad). So those inks never go
+    /// below `minimumPenSize` (about 1 pt drawn; any larger minimum would make a snapped shape
+    /// thicker than light writing).
+    static let minimumPenSize: CGFloat = 2.5
+
+    func drawable(with ink: PKInkingTool.InkType, width: CGFloat) -> InkTemplate {
+        guard [.pen, .monoline, .fountainPen].contains(ink) else { return self }
+        let minimum = Self.minimumPenSize
+        var result = self
+        if size.width < minimum || size.height < minimum {
+            result.size = CGSize(width: max(size.width, minimum), height: max(size.height, minimum))
+        }
+        return result
     }
 
     /// One stroke through `points` whose every point looks like this template.
