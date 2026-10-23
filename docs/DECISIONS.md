@@ -266,7 +266,8 @@ Decided:
   - Page by page: the smallest zoom is the fit (vertical: half of it), set again on every page turn and window size change; PDFKit fits the first page to the size before layout, so the editor fits again after its first layout. The toolbar inset is not applied (PDFKit centers each page). The "scroll view" for the two-finger-tap stillness check and for keeping text above the keyboard is the shown page's own scroll view.
   - The paging scroll view's pan takes only fingers and the trackpad, never the Pencil.
   - Tab position page by page: the page with zoom 0 ("fit"); in the vertical column such a position opens at the top of that page at the fit width.
-  - Tests: `PageByPageTests` (8, the real editor in a window: whole page fits, go to page, delete the shown page and undo, delete the last page, duplicate and move before the shown page, switch both ways, Pencil does not page, tab position into the column). 508 unit tests and both UI tests pass.
+  - Known limit: the reload runs inside the page operation's undo group, so text still being typed page by page is finished into the same undo step (one undo takes back both; nothing is lost).
+  - Tests: `PageByPageTests` (9; also: the Pencil restriction survives a reload and a mode switch, "+" with reveal lands on the new page, the sidebar highlight follows a delete; the real editor in a window: whole page fits, go to page, delete the shown page and undo, delete the last page, duplicate and move before the shown page, switch both ways, Pencil does not page, tab position into the column). 508 unit tests and both UI tests pass.
   - **For the iPad:** swipe feel, fast Pencil strokes near the page edge must not turn the page, finger drawing on + horizontal (one finger draws or turns?), zoom sharpness after turning pages, page operations from the sidebar while page by page, heat.
 - (new entries go here, newest last)
 

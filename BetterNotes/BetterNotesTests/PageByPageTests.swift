@@ -85,6 +85,7 @@ struct PageByPageTests {
         try await setup.settle()
         #expect(setup.shownIndex == 1)
         #expect(setup.overlays.allSatisfy { $0.window != nil && $0.pageID == next })
+        #expect(setup.navigator.currentPageID == next)  // the sidebar highlight follows
 
         setup.notebook.undoManager.undo()  // the page comes back; the shown page stays
         try await setup.settle()
@@ -143,9 +144,8 @@ struct PageByPageTests {
         #expect(setup.shownIndex == 2)
     }
 
-    @Test func thePencilDoesNotTurnPages() async throws {
-        let setup = try await makeSetup()
-        defer { setup.window.isHidden = true }
+    /// The touch types the paging scroll view's swipe takes.
+    private func pageTurnTouchTypes(in setup: Setup) throws -> [Int] {
         var queue: [UIView] = [try pdfView(in: setup)]
         var pager: UIScrollView?
         while let view = queue.first, pager == nil {
@@ -153,9 +153,38 @@ struct PageByPageTests {
             if let scroll = view as? UIScrollView, scroll.isPagingEnabled { pager = scroll }
             queue.append(contentsOf: view.subviews)
         }
-        let types = try #require(pager).panGestureRecognizer.allowedTouchTypes.map(\.intValue)
-        #expect(types.contains(UITouch.TouchType.direct.rawValue))
-        #expect(!types.contains(UITouch.TouchType.pencil.rawValue))
+        return try #require(pager).panGestureRecognizer.allowedTouchTypes.map(\.intValue)
+    }
+
+    @Test func thePencilDoesNotTurnPagesAlsoAfterAReload() async throws {
+        let setup = try await makeSetup()
+        defer { setup.window.isHidden = true }
+        func check() throws {
+            let types = try pageTurnTouchTypes(in: setup)
+            #expect(types.contains(UITouch.TouchType.direct.rawValue))
+            #expect(!types.contains(UITouch.TouchType.pencil.rawValue))
+        }
+        try check()
+        // A page operation and a mode switch each make a new page view controller.
+        try setup.notebook.deletePages([setup.notebook.pages[0].id])
+        try await setup.settle()
+        try check()
+        setup.controller.scrollsHorizontally = false
+        try await setup.settle()
+        setup.controller.scrollsHorizontally = true
+        try await setup.settle()
+        try check()
+    }
+
+    @Test func aNewPageIsShownRightAfterInsertingIt() async throws {
+        let setup = try await makeSetup()
+        defer { setup.window.isHidden = true }
+        // Like the "+" button: insert after the shown page and jump there in the same turn.
+        let added = try setup.notebook.addPage(template: .lined, at: 1)
+        setup.navigator.goTo(added)
+        try await setup.settle()
+        #expect(setup.shownIndex == 1)
+        #expect(setup.navigator.currentPageID == added)
     }
 
     @Test func aTabSavedPageByPageOpensAtThatPageInTheColumn() async throws {
