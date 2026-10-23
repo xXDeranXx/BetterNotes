@@ -74,6 +74,22 @@ struct EditorCoordinatorTests {
         #expect(!setup.notebook.undoManager.canRedo)
     }
 
+    @Test func writingAfterAnUndoDoesNotBringTheUndoneStrokeBack() throws {
+        let setup = try makeSetup()
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        overlay.canvas.delegate = setup.coordinator
+        setup.coordinator.overlayDidAppear(overlay)
+        userDraws(sampleDrawing(), on: overlay, using: setup.coordinator)  // stroke A
+        setup.notebook.undoManager.undo()
+        setup.coordinator.apply(settings: ToolSettings(), isRulerActive: false)  // the toolbar refreshes after an undo
+
+        // PencilKit adds the next stroke to whatever the canvas holds.
+        userDraws(overlay.canvas.drawing.appending(sampleDrawing(offset: 50)), on: overlay, using: setup.coordinator)
+
+        #expect(setup.notebook.drawing(for: setup.pageA).strokes.count == 1)
+        #expect(overlay.canvas.drawing.strokes.count == 1)
+    }
+
     @Test func aCanvasThatAppearsLaterShowsChangesMadeWhileItWasOffScreen() throws {
         let setup = try makeSetup()
         let overlay = PageOverlayView(pageID: setup.pageA)
@@ -289,6 +305,25 @@ struct EditorCoordinatorTests {
             #expect(HexColor.hex(of: pen.color) == "#1E5BFF")
             #expect(overlay.canvas.isRulerActive)
         }
+    }
+
+    @Test func applyingTheSameSettingsAgainTouchesNoCanvas() throws {
+        let setup = try makeSetup()
+        let overlay = PageOverlayView(pageID: setup.pageA)
+        setup.coordinator.overlayDidAppear(overlay)
+        var settings = ToolSettings()
+        settings.selected = .pen(.pen)
+        setup.coordinator.apply(settings: settings, isRulerActive: false)
+        let toolBefore = overlay.canvas.tool
+
+        // SwiftUI refreshes after every undo and stroke and calls apply again with the same values.
+        setup.coordinator.apply(settings: settings, isRulerActive: false)
+        #expect(overlay.canvas.tool === toolBefore)
+
+        settings.setWidth(8, for: .pen)  // a real change goes through
+        setup.coordinator.apply(settings: settings, isRulerActive: false)
+        #expect(overlay.canvas.tool !== toolBefore)
+        #expect((overlay.canvas.tool as? PKInkingTool)?.width == 8)
     }
 
     @Test func switchingToTheEraserChangesEveryCanvas() throws {

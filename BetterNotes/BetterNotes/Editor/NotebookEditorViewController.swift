@@ -194,7 +194,7 @@ final class NotebookEditorViewController: UIViewController, UIGestureRecognizerD
     func presentPalette(at position: CGPoint?) {
         guard let tools, presentedViewController == nil else { return }
         let anchor = position ?? lastHover ?? CGPoint(x: view.bounds.midX, y: 80)
-        let content = UIHostingController(rootView: PenOptionsView(tools: tools, kind: tools.currentPen))
+        let content = UIHostingController(rootView: QuickPaletteView(tools: tools))
         content.modalPresentationStyle = .popover
         content.preferredContentSize = content.sizeThatFits(in: CGSize(width: 320, height: 700))
         if let popover = content.popoverPresentationController {

@@ -24,6 +24,14 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     private(set) var usesSystemToolPicker = false
     private(set) var isRulerActive = false
     private(set) var allowsFingerDrawing = false
+    private var lastApplication: ToolApplication?
+
+    /// What `configure` needs from the settings; selecting a tool or changing its color or
+    /// width changes it, undo does not.
+    private struct ToolApplication: Equatable {
+        let settings: ToolSettings
+        let isRulerActive: Bool
+    }
 
     /// PDFKit gives every overlay the size of the page in points (595 x 842 for A4) at every
     /// zoom, and enlarges it from outside, so a canvas that renders at the page's own size
@@ -158,7 +166,15 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
     // MARK: Tools
 
     /// Called by the editor whenever the toolbar's settings change.
+    ///
+    /// SwiftUI calls this after every undo and every stroke too, not only when a tool changed.
+    /// Touching a `PKCanvasView`'s tool or drawing policy right after a stroke or an undo is
+    /// not harmless (an undone stroke came back on the iPad), so nothing is touched when the
+    /// relevant settings are the same as the last time.
     func apply(settings: ToolSettings, isRulerActive: Bool) {
+        let key = ToolApplication(settings: settings, isRulerActive: isRulerActive)
+        guard key != lastApplication else { return }
+        lastApplication = key
         let switchedPicker = settings.usesSystemToolPicker != usesSystemToolPicker
         tool = settings.makeTool()
         usesSystemToolPicker = settings.usesSystemToolPicker
@@ -174,9 +190,10 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
 
     private func configure(_ canvas: PKCanvasView) {
         if !usesSystemToolPicker { canvas.tool = tool }
-        canvas.isRulerActive = isRulerActive
+        if canvas.isRulerActive != isRulerActive { canvas.isRulerActive = isRulerActive }
         #if !targetEnvironment(simulator)
-        canvas.drawingPolicy = allowsFingerDrawing ? .anyInput : .pencilOnly
+        let policy: PKCanvasViewDrawingPolicy = allowsFingerDrawing ? .anyInput : .pencilOnly
+        if canvas.drawingPolicy != policy { canvas.drawingPolicy = policy }
         #endif
     }
 
