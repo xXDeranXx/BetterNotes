@@ -217,7 +217,8 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
         #else
         overlay.shapeGesture.allowFingers(allowsFingerDrawing)
         #endif
-        overlay.holdGesture.isEnabled = snappingPen != nil
+        // Not with the ruler: a ruler line must stay at the ruler's angle, not snap to 0 degrees.
+        overlay.holdGesture.isEnabled = snappingPen != nil && !isRulerActive
         #if targetEnvironment(simulator)
         overlay.holdGesture.allowFingers(true)
         #else
@@ -433,7 +434,10 @@ final class EditorCoordinator: NSObject, PDFPageOverlayViewProvider, PKCanvasVie
 
     /// Remembers the look of a stroke the user just drew with a pen.
     private func rememberInk(of stroke: PKStroke) {
-        guard let pen = snappingPen, let template = InkTemplate.from(stroke) else { return }
+        // A dot or tick (the dot on an i) is not typical of the pen; only real lines count.
+        guard let pen = snappingPen, stroke.path.count >= 8, stroke.renderBounds.width + stroke.renderBounds.height >= 15,
+            let template = InkTemplate.from(stroke)
+        else { return }
         inkTemplates[TemplateKey(kind: pen.kind, width: pen.setting.width)] = template
     }
 

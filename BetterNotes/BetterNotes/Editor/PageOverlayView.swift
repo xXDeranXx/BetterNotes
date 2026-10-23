@@ -413,6 +413,8 @@ extension PageOverlayView: UIGestureRecognizerDelegate {
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool {
-        gestureRecognizer === holdGesture && (other.view is PKCanvasView)
+        // Compared by identity: PencilKit may attach its gesture to an inner view of the canvas.
+        gestureRecognizer === holdGesture
+            && (other === canvas.drawingGestureRecognizer || other === retiredCanvas?.drawingGestureRecognizer)
     }
 }

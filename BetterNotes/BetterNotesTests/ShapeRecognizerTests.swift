@@ -345,3 +345,18 @@ struct InkTemplateTests {
         #expect(!decoded.holdToSnapShapes)
     }
 }
+
+@MainActor
+struct HoldGestureTests {
+    @Test func theHoldGestureWatchesOnlyPencilKitsDrawingGesture() {
+        let overlay = PageOverlayView(pageID: UUID())
+        let hold = overlay.holdGesture
+        #expect(overlay.gestureRecognizer(hold, shouldRecognizeSimultaneouslyWith: overlay.canvas.drawingGestureRecognizer))
+        #expect(!overlay.gestureRecognizer(hold, shouldRecognizeSimultaneouslyWith: UIPanGestureRecognizer()))
+        // After an undo the page has a fresh canvas, and the old one still covers it for a moment.
+        let old = overlay.canvas
+        overlay.replaceCanvas()
+        #expect(overlay.gestureRecognizer(hold, shouldRecognizeSimultaneouslyWith: overlay.canvas.drawingGestureRecognizer))
+        #expect(overlay.gestureRecognizer(hold, shouldRecognizeSimultaneouslyWith: old.drawingGestureRecognizer))
+    }
+}
